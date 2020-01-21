@@ -15,7 +15,8 @@ public:
       const fs::path &output);
 
   int run();
-  bool loadGltfFile(tinygltf::Model & model);
+  bool loadGltfFile(tinygltf::Model &model);
+  std::vector<GLuint> createBufferObjects(const tinygltf::Model &model);
 
 private:
   // A range of indices in a vector containing Vertex Array Objects
