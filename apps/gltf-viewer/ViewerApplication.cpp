@@ -37,25 +37,6 @@ int ViewerApplication::run()
   const auto normalMatrixLocation =
       glGetUniformLocation(glslProgram.glId(), "uNormalMatrix");
 
-  // Build projection matrix
-  auto maxDistance = 500.f; // TODO use scene bounds instead to compute this
-  maxDistance = maxDistance > 0.f ? maxDistance : 100.f;
-  const auto projMatrix =
-      glm::perspective(70.f, float(m_nWindowWidth) / m_nWindowHeight,
-          0.001f * maxDistance, 1.5f * maxDistance);
-
-  // TODO Implement a new CameraController model and use it instead. Propose the
-  // choice from the GUI
-  FirstPersonCameraController cameraController{
-      m_GLFWHandle.window(), 0.5f * maxDistance};
-  if (m_hasUserCamera) {
-    cameraController.setCamera(m_userCamera);
-  } else {
-    // TODO Use scene bounds to compute a better default camera
-    cameraController.setCamera(
-        Camera{glm::vec3(0, 0, 0), glm::vec3(0, 0, -1), glm::vec3(0, 1, 0)});
-  }
-
   tinygltf::Model model;
   // TODO Loading the glTF file
   if (!loadGltfFile(model)) {
@@ -68,6 +49,29 @@ int ViewerApplication::run()
   // TODO Creation of Vertex Array Objects
   std::vector<VaoRange> meshIndexToVaoRange;
   const auto vertexArrayObjects = createVertexArrayObjects(model, bufferObjects, meshIndexToVaoRange);
+
+  glm::vec3 bboxMin, bboxMax;
+  computeSceneBounds(model, bboxMin, bboxMax);
+  glm::vec3 center = (bboxMax - bboxMin) * .5f;
+  glm::vec3 diag = bboxMax - bboxMin;
+  glm::vec3 up = glm::vec3(0, 1, 0);
+  glm::vec3 eye = diag.z > 0 ? center + diag : center + 2.f * glm::cross(diag, up);
+
+  // Build projection matrix
+  auto maxDistance = glm::length(diag); // TODO use scene bounds instead to compute this
+  maxDistance = maxDistance > 0.f ? maxDistance : 100.f;
+  const auto projMatrix = glm::perspective(70.f, float(m_nWindowWidth) / m_nWindowHeight,
+          0.001f * maxDistance, 1.5f * maxDistance);
+
+  // TODO Implement a new CameraController model and use it instead. Propose the
+  // choice from the GUI
+  FirstPersonCameraController cameraController{m_GLFWHandle.window(), 5.f * maxDistance};
+  if (m_hasUserCamera) {
+    cameraController.setCamera(m_userCamera);
+  } else {
+    // TODO Use scene bounds to compute a better default camera
+    cameraController.setCamera(Camera{eye, center, up});
+  }
 
   // Setup OpenGL state for rendering
   glEnable(GL_DEPTH_TEST);
@@ -122,7 +126,6 @@ int ViewerApplication::run()
             drawNode(childNodeIdx, modelMatrix);
           }
         };
-
 
     // Draw the scene referenced by gltf file
     if (model.defaultScene >= 0) {
