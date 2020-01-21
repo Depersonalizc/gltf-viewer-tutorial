@@ -10,6 +10,7 @@
 
 #include "utils/cameras.hpp"
 #include "utils/gltf.hpp"
+#include "utils/images.hpp"
 
 #include <stb_image_write.h>
 #include <tiny_gltf.h>
@@ -132,6 +133,21 @@ int ViewerApplication::run()
     }
     glBindVertexArray(0);
   };
+
+  // Render to image
+  if (!m_OutputPath.empty()) {
+    std::clog << "Saving..." << std::endl;
+    const auto numComponents = 3; // RGB
+    std::vector<unsigned char> pixels(m_nWindowWidth * m_nWindowHeight * numComponents); // Store the image
+    renderToImage(m_nWindowWidth, m_nWindowHeight, numComponents, pixels.data(), [&]() {
+      drawScene(cameraController.getCamera());
+    });
+    flipImageYAxis(m_nWindowWidth, m_nWindowHeight, 3, pixels.data()); // Flip the image
+    const auto strPath = m_OutputPath.string();
+    stbi_write_png(strPath.c_str(), m_nWindowWidth, m_nWindowHeight, 3, pixels.data(), 0); // Write the image to a png file
+    std::clog << "Done." << std::endl;
+    return 0; // Prevent the render loop to run
+  }
 
   // Loop until the user closes the window
   for (auto iterationCount = 0u; !m_GLFWHandle.shouldClose();
