@@ -83,11 +83,15 @@ int ViewerApplication::run()
     const std::function<void(int, const glm::mat4 &)> drawNode =
         [&](int nodeIdx, const glm::mat4 &parentMatrix) {
           // TODO The drawNode function
+          
         };
 
     // Draw the scene referenced by gltf file
     if (model.defaultScene >= 0) {
       // TODO Draw all nodes
+      for (auto &nodeIdx : model.scenes[model.defaultScene].nodes) {
+        drawNode(nodeIdx, glm::mat4(1));
+      }
     }
   };
 
