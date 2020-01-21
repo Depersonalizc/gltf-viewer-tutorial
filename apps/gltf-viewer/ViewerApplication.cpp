@@ -64,6 +64,8 @@ int ViewerApplication::run()
   const auto bufferObjects = createBufferObjects(model);
 
   // TODO Creation of Vertex Array Objects
+  std::vector<VaoRange> meshIndexToVaoRange;
+  const auto VAOs = createVertexArrayObjects(model, bufferObjects, meshIndexToVaoRange);
 
   // Setup OpenGL state for rendering
   glEnable(GL_DEPTH_TEST);
@@ -170,7 +172,7 @@ bool ViewerApplication::loadGltfFile(tinygltf::Model & model) {
   }
 
   return true;
-};
+}
 
 std::vector<GLuint> ViewerApplication::createBufferObjects(const tinygltf::Model &model) {
   std::vector<GLuint> bufferObjects(model.buffers.size(), 0);
@@ -184,6 +186,79 @@ std::vector<GLuint> ViewerApplication::createBufferObjects(const tinygltf::Model
   glBindBuffer(GL_ARRAY_BUFFER, 0); // Cleanup the binding point after the loop
 
   return bufferObjects;
+}
+
+std::vector<GLuint> ViewerApplication::createVertexArrayObjects(const tinygltf::Model &model, const std::vector<GLuint> &bufferObjects, std::vector<VaoRange> &meshIndexToVaoRange) {
+  std::vector<GLuint> vertexArrayObjects;
+
+  // For each mesh of model we keep its range of VAOs
+  meshIndexToVaoRange.resize(model.meshes.size());
+
+  const GLuint VERTEX_ATTRIB_POSITION_IDX = 0;
+  const GLuint VERTEX_ATTRIB_NORMAL_IDX = 1;
+  const GLuint VERTEX_ATTRIB_TEXCOORD0_IDX = 2;
+
+  std::map<std::string, GLuint> attributes;
+  attributes.insert(std::make_pair("POSITION", VERTEX_ATTRIB_POSITION_IDX));
+  attributes.insert(std::make_pair("NORMAL", VERTEX_ATTRIB_NORMAL_IDX));
+  attributes.insert(std::make_pair("TEXCOORD_0", VERTEX_ATTRIB_TEXCOORD0_IDX));
+
+  for (size_t i = 0; i < model.meshes.size(); ++i) {
+    const auto &mesh = model.meshes[i];
+    const auto vaoOffset = vertexArrayObjects.size();
+    vertexArrayObjects.resize(vaoOffset + mesh.primitives.size());
+    meshIndexToVaoRange.push_back(VaoRange{GLsizei(vaoOffset), GLsizei(mesh.primitives.size())});
+
+    auto &vaoRange = meshIndexToVaoRange[i];
+    vaoRange.begin = GLsizei(vertexArrayObjects.size()); // Range for this mesh will be at the end of vertexArrayObjects
+    vaoRange.count = GLsizei(mesh.primitives.size()); // One VAO for each primitive
+    glGenVertexArrays(vaoRange.count, &vertexArrayObjects[vaoRange.begin]);
+
+    for (size_t pIdx = 0; pIdx < mesh.primitives.size(); ++pIdx) {
+      const auto vao = vertexArrayObjects[vaoRange.begin + pIdx];
+      const auto &primitive = mesh.primitives[pIdx];
+      glBindVertexArray(vao);
+
+      // Loop over POSITION, NORMAL, TEXCOORD_0
+      for (auto attribute : attributes) {
+        const auto iterator = primitive.attributes.find(attribute.first); // for example attribute.second = "POSITION"
+        if (iterator != end(primitive.attributes)) {
+          const auto accessorIdx = (*iterator).second;
+          const auto &accessor = model.accessors[accessorIdx];
+          const auto &bufferView = model.bufferViews[accessor.bufferView];
+          const auto bufferIdx = bufferView.buffer;
+
+          glEnableVertexAttribArray(attribute.second);
+
+          assert(GL_ARRAY_BUFFER == bufferView.target);
+
+          // Theorically we could also use bufferView.target, but it is safer
+          // Here it is important to know that the next call
+          // (glVertexAttribPointer) use what is currently bound
+          glBindBuffer(GL_ARRAY_BUFFER, bufferObjects[bufferIdx]);
+
+          // tinygltf converts strings type like "VEC3, "VEC2" to the number of
+          // components, stored in accessor.type
+          const auto byteOffset = accessor.byteOffset + bufferView.byteOffset;
+          glVertexAttribPointer(attribute.second, accessor.type,
+              accessor.componentType, GL_FALSE, GLsizei(bufferView.byteStride),
+              (const GLvoid *)byteOffset);
+        }
+      }
+
+      if (primitive.indices >= 0) {
+        const auto accessorIdx = primitive.indices;
+        const auto &accessor = model.accessors[accessorIdx];
+        const auto &bufferView = model.bufferViews[accessor.bufferView];
+        const auto bufferIdx = bufferView.buffer;
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferObjects[bufferIdx]);
+      }
+    }
+  }
+  glBindVertexArray(0); // Unbind VAO
+
+  return vertexArrayObjects;
 }
 
 ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
