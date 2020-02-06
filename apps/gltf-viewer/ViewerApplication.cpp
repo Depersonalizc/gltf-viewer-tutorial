@@ -36,6 +36,10 @@ int ViewerApplication::run()
       glGetUniformLocation(glslProgram.glId(), "uModelViewMatrix");
   const auto normalMatrixLocation =
       glGetUniformLocation(glslProgram.glId(), "uNormalMatrix");
+  const auto uLightDirectionLocation =
+      glGetUniformLocation(glslProgram.glId(), "uLightDirection");
+  const auto uLightIntensityLocation =
+      glGetUniformLocation(glslProgram.glId(), "uLightIntensity");
 
   tinygltf::Model model;
   // TODO Loading the glTF file
@@ -79,12 +83,28 @@ int ViewerApplication::run()
   glEnable(GL_DEPTH_TEST);
   glslProgram.use();
 
+  // Init light parameters
+  glm::vec3 lightDirection(1.f, 1.f, 1.f);
+  glm::vec3 lightIntensity(1.f, 0.f, 0.f);
+
   // Lambda function to draw the scene
   const auto drawScene = [&](const Camera &camera) {
     glViewport(0, 0, m_nWindowWidth, m_nWindowHeight);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     const auto viewMatrix = camera.getViewMatrix();
+
+    if (uLightDirectionLocation >= 0) {
+      const auto lightDirectionInViewSpace =
+        glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
+      glUniform3f(uLightDirectionLocation, lightDirectionInViewSpace[0],
+        lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
+    }
+
+    if (uLightIntensityLocation >= 0) {
+      glUniform3f(uLightIntensityLocation, lightIntensity[0], lightIntensity[1],
+        lightIntensity[2]);
+    }
 
     // The recursive function that should draw a node
     // We use a std::function because a simple lambda cannot be recursive
@@ -202,6 +222,32 @@ int ViewerApplication::run()
         if (ImGui::RadioButton("FirstPerson", &cameraControllerType, 1)) {
           cameraController = std::make_unique<FirstPersonCameraController>(m_GLFWHandle.window(), 5.f * maxDistance);
           cameraController->setCamera(camera);
+        }
+
+        if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+          static float theta = 0.0f;
+          static float phi = 0.0f;
+          static bool lightFromCamera = true;
+          ImGui::Checkbox("Light from camera", &lightFromCamera);
+          if (lightFromCamera) {
+            lightDirection = -camera.front();
+          } else {
+            if (ImGui::SliderFloat("Theta", &theta, 0.f, glm::pi<float>()) ||
+                ImGui::SliderFloat("Phi", &phi, 0, 2.f * glm::pi<float>())) {
+              lightDirection = glm::vec3(
+                glm::sin(theta) * glm::cos(phi),
+                glm::cos(theta),
+                glm::sin(theta) * glm::sin(phi)
+              );
+            }
+          }
+
+          static glm::vec3 lightColor(1.0f, 0.0f, 0.2f);
+          static float lightIntensityFactor = 1.f;
+          if (ImGui::ColorEdit3("Light Color", (float *)&lightColor) ||
+              ImGui::SliderFloat("Ligth Intensity", &lightIntensityFactor, 0.f, 2.f)) {
+            lightIntensity = lightColor * lightIntensityFactor;
+          }
         }
       }
       ImGui::End();
