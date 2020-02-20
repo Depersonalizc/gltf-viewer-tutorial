@@ -59,7 +59,7 @@ int ViewerApplication::run()
 
   // Creation of texture object
   const auto textureObjects = createTextureObjects(model);
-  
+
   // Default white texture
   GLuint whiteTexture;
   float white[] = {1, 1, 1, 1};
@@ -114,7 +114,7 @@ int ViewerApplication::run()
 
   // Init light parameters
   glm::vec3 lightDirection(1.f, 1.f, 1.f);
-  glm::vec3 lightIntensity(1.f, 0.f, 0.f);
+  glm::vec3 lightIntensity(1.f, 1.f, 1.f);
 
   const auto bindMaterial = [&](const auto materialIndex) {
     // Material binding
@@ -304,10 +304,10 @@ int ViewerApplication::run()
             }
           }
 
-          static glm::vec3 lightColor(1.0f, 0.0f, 0.2f);
+          static glm::vec3 lightColor(1.f, 1.f, 1.f);
           static float lightIntensityFactor = 1.f;
           if (ImGui::ColorEdit3("Light Color", (float *)&lightColor) ||
-              ImGui::SliderFloat("Ligth Intensity", &lightIntensityFactor, 0.f, 2.f)) {
+              ImGui::SliderFloat("Ligth Intensity", &lightIntensityFactor, 0.f, 10.f)) {
             lightIntensity = lightColor * lightIntensityFactor;
           }
         }
@@ -459,11 +459,11 @@ std::vector<GLuint> ViewerApplication::createTextureObjects(const tinygltf::Mode
     const auto &texture = model.textures[i]; // get i-th texture
     assert(texture.source >= 0); // ensure a source image is present
     const auto &image = model.images[texture.source]; // get the image
-    
+
     GLuint texObject;
     // Generate the texture object
     glGenTextures(1, &texObject);
-    
+
     glBindTexture(GL_TEXTURE_2D, texObject); // Bind to target GL_TEXTURE_2D
 
     // fill the texture object with the data from the image
