@@ -9,19 +9,21 @@ __How to run the program (in build folder) :__
 cmake ../gltf-viewer-tutorial-git && make -j && ./bin/gltf-viewer viewer ../glTF-Sample-Models/DamagedHelmet/glTF/DamagedHelmet.gltf
 ```
 
-__TODO__ :
+__TODO / IDEAS__ :
 - [x] Loading and drawing
 - [x] Controlling the Camera
 - [x] Directional Lighting
 - [x] Physically Based Materials
-- [x] Refacto white default texture
-- [ ] Emissive Material
+- [x] Refacto white default texture
+- [x] Emissive Material
+- [x] Toggle Textures in GUI
+- [x] Occlusion Mapping
 - [ ] Normal mapping
-- [ ] Occlusion Mapping
 - [ ] Shadow Mapping
-- [ ] Deferred Rendering
-- [ ] Post Processing - SSAO
-- [ ] Post Processing - Bloom
+- [ ] Deferred Rendering
+- [ ] Point Light
+- [ ] Multiple lights
+- [ ] Post Processing - SSAO
+- [ ] Post Processing - Bloom
 - [ ] HDRi
 - [ ] Motion blur
-- [ ] Point Light
