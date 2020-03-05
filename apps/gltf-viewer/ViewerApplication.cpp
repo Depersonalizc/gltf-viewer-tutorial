@@ -46,10 +46,14 @@ int ViewerApplication::run()
       glGetUniformLocation(glslProgram.glId(), "uBaseColorFactor");
   const auto uMetallicFactorLocation =
       glGetUniformLocation(glslProgram.glId(), "uMetallicFactor");
-  const auto uRougnessFactorLocation =
-      glGetUniformLocation(glslProgram.glId(), "uRougnessFactor");
+  const auto uRoughnessFactorLocation =
+      glGetUniformLocation(glslProgram.glId(), "uRoughnessFactor");
   const auto uMetallicRoughnessTextureLocation =
       glGetUniformLocation(glslProgram.glId(), "uMetallicRoughnessTexture");
+  const auto uEmissiveTextureLocation =
+      glGetUniformLocation(glslProgram.glId(), "uEmissiveTexture");
+  const auto uEmissiveFactorLocation =
+      glGetUniformLocation(glslProgram.glId(), "uEmissiveFactor");
 
   tinygltf::Model model;
   // TODO Loading the glTF file
@@ -61,7 +65,8 @@ int ViewerApplication::run()
   const auto textureObjects = createTextureObjects(model);
   
   // Default white texture
-  GLuint whiteTexture;
+  GLuint whiteTexture = createDefaultTexture();
+/*  GLuint whiteTexture = createDefaultTexture();
   float white[] = {1, 1, 1, 1};
   glGenTextures(1, &whiteTexture);
   glBindTexture(GL_TEXTURE_2D, whiteTexture);
@@ -74,7 +79,7 @@ int ViewerApplication::run()
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_REPEAT);
 
-  glBindTexture(GL_TEXTURE_2D, 0);
+  glBindTexture(GL_TEXTURE_2D, 0); */
 
   // TODO Creation of Buffer Objects
   const auto bufferObjects = createBufferObjects(model);
@@ -114,13 +119,16 @@ int ViewerApplication::run()
 
   // Init light parameters
   glm::vec3 lightDirection(1.f, 1.f, 1.f);
-  glm::vec3 lightIntensity(1.f, 0.f, 0.f);
+  glm::vec3 lightIntensity(1.f, 1.f, 1.f);
 
   const auto bindMaterial = [&](const auto materialIndex) {
     // Material binding
     if (materialIndex >= 0) {
       const auto &material = model.materials[materialIndex];
       const auto &pbrMetallicRoughness = material.pbrMetallicRoughness;
+      const auto &emissiveTexture = material.emissiveTexture;
+      
+      // Base color texture
       if (pbrMetallicRoughness.baseColorTexture.index >= 0) {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, textureObjects[pbrMetallicRoughness.baseColorTexture.index]);
@@ -131,12 +139,25 @@ int ViewerApplication::run()
           (float)pbrMetallicRoughness.baseColorFactor[2],
           (float)pbrMetallicRoughness.baseColorFactor[3]);
       }
+
+      // Metallic / Roughness texture
       if (pbrMetallicRoughness.metallicRoughnessTexture.index >= 0) {
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, textureObjects[pbrMetallicRoughness.metallicRoughnessTexture.index]);
         glUniform1i(uMetallicRoughnessTextureLocation, 1);
-        glUniform1f(uMetallicFactorLocation, 1.f);
-        glUniform1f(uRougnessFactorLocation, 1.f);
+        glUniform1f(uMetallicFactorLocation, pbrMetallicRoughness.metallicFactor);
+        glUniform1f(uRoughnessFactorLocation, pbrMetallicRoughness.roughnessFactor);
+      }
+
+      // EmissiveTexture
+      if (emissiveTexture.index >= 0) {
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, textureObjects[emissiveTexture.index]);
+        glUniform1i(uEmissiveTextureLocation, 2);
+        glUniform3f(uEmissiveFactorLocation, 
+          (float) material.emissiveFactor[0],
+          (float) material.emissiveFactor[1],
+          (float) material.emissiveFactor[2]);
       }
       return;
     }
@@ -304,10 +325,10 @@ int ViewerApplication::run()
             }
           }
 
-          static glm::vec3 lightColor(1.0f, 0.0f, 0.2f);
+          static glm::vec3 lightColor(1.0f, 1.0f, 1.0f);
           static float lightIntensityFactor = 1.f;
           if (ImGui::ColorEdit3("Light Color", (float *)&lightColor) ||
-              ImGui::SliderFloat("Ligth Intensity", &lightIntensityFactor, 0.f, 2.f)) {
+              ImGui::SliderFloat("Ligth Intensity", &lightIntensityFactor, 0.f, 10.f)) {
             lightIntensity = lightColor * lightIntensityFactor;
           }
         }
@@ -492,6 +513,26 @@ std::vector<GLuint> ViewerApplication::createTextureObjects(const tinygltf::Mode
   glBindTexture(GL_TEXTURE_2D, 0);
 
   return textureObjects;
+}
+
+GLuint ViewerApplication::createDefaultTexture() const {
+  GLuint whiteTexture;
+
+  float white[] = {1, 1, 1, 1};
+  glGenTextures(1, &whiteTexture);
+  glBindTexture(GL_TEXTURE_2D, whiteTexture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0,
+          GL_RGBA, GL_FLOAT, &white);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+
+  glBindTexture(GL_TEXTURE_2D, 0);
+
+  return whiteTexture;
 }
 
 ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,

@@ -9,8 +9,10 @@ uniform vec3 uLightIntensity;
 uniform vec4 uBaseColorFactor;
 uniform sampler2D uBaseColorTexture;
 uniform float uMetallicFactor;
-uniform float uRougnessFactor;
+uniform float uRoughnessFactor;
 uniform sampler2D uMetallicRoughnessTexture;
+uniform sampler2D uEmissiveTexture;
+uniform vec3 uEmissiveFactor;
 
 out vec3 fColor;
 
@@ -54,42 +56,43 @@ void main()
 
   vec4 baseColorFromTexture = SRGBtoLINEAR(texture(uBaseColorTexture, vTexCoords));
   vec4 baseColor = baseColorFromTexture * uBaseColorFactor;
-  
+
   float metallic = texture(uMetallicRoughnessTexture, vTexCoords).b * uMetallicFactor;
-  float roughness = texture(uMetallicRoughnessTexture, vTexCoords).g * uRougnessFactor;
+  float roughness = texture(uMetallicRoughnessTexture, vTexCoords).g * uRoughnessFactor;
+  vec3 emissive = SRGBtoLINEAR(texture(uEmissiveTexture, vTexCoords)).rgb * uEmissiveFactor;
 
   float alpha = roughness * roughness;
   float alpha_squared = alpha * alpha;
 
-  vec3 F0 = mix(dielectricSpecular, baseColor.rgb, metallic);
-
+  // Microfacet Distribution (D)
+  // Trowbridge-Reitz
   float D =                                               alpha_squared
             / /* -----------------------------------------------------------------------------------------------*/
                   (M_PI * ((NdotH*NdotH * (alpha_squared - 1) + 1) * (NdotH*NdotH * (alpha_squared - 1) + 1)));
 
-  //  Fresnel Schlick
+  // Surface Reflection Ratio (F)
+  // Fresnel Schlick
+  vec3 F0 = mix(dielectricSpecular, baseColor.rgb, metallic);
   float baseShlickFactor = (1 - VdotH);
   float shlickFactor = baseShlickFactor * baseShlickFactor; // power 2
   shlickFactor *= shlickFactor; // power 4
   shlickFactor *= baseShlickFactor; // power 5
   vec3 F = F0 + (1 - F0) * shlickFactor;
 
-  float visDenominator = (NdotL * sqrt(NdotV*NdotV * (1-alpha_squared) + alpha_squared) + NdotV * sqrt(NdotL*NdotL * (1-alpha_squared) + alpha_squared));
+  // Geometric Occlusion (G)
+  // Smith Joint GGX
+  float visDenominator = NdotL * sqrt(NdotV*NdotV * (1-alpha_squared) + alpha_squared) + NdotV * sqrt(NdotL*NdotL * (1-alpha_squared) + alpha_squared);
   float Vis;
   if (visDenominator > 0) {
     Vis = .5f / visDenominator;
   } else {
     Vis = 0.f;
   }
-  
+
   vec3 c_diff = mix(baseColor.rgb * (1 - dielectricSpecular.r), black, metallic);
   vec3 diffuse = c_diff * M_1_PI;
-
   vec3 f_diffuse = (1 - F) * diffuse;
   vec3 f_specular = F * Vis * D;
 
-  fColor = LINEARtoSRGB((f_diffuse + f_specular) * uLightIntensity * NdotL);
-
-  // diffuse = f_diffuse * NdotL;
-  // fColor = LINEARtoSRGB(diffuse);
+  fColor = LINEARtoSRGB((f_diffuse + f_specular) * uLightIntensity * NdotL + emissive);
 }

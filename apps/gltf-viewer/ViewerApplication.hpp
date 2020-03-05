@@ -31,7 +31,8 @@ private:
   std::vector<GLuint> createBufferObjects(const tinygltf::Model &model);
   std::vector<GLuint> createVertexArrayObjects(const tinygltf::Model &model, const std::vector<GLuint> &bufferObjects, std::vector<VaoRange> &meshIndexToVaoRange);
   std::vector<GLuint> createTextureObjects(const tinygltf::Model &model) const;
-  
+  GLuint createDefaultTexture() const;
+
   const fs::path m_AppPath;
   const std::string m_AppName;
   const fs::path m_ShadersRootPath;
