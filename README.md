@@ -5,8 +5,12 @@
 
 __How to run the program (in build folder) :__
 
-```
+```shell
 cmake ../gltf-viewer-tutorial-git && make -j && ./bin/gltf-viewer viewer ../glTF-Sample-Models/DamagedHelmet/glTF/DamagedHelmet.gltf
+```
+or
+```shell
+cmake .. && make -j && ./bin/gltf-viewer viewer ../../models/DamagedHelmet/glTF/DamagedHelmet.gltf
 ```
 
 __TODO / IDEAS__ :
@@ -18,12 +22,17 @@ __TODO / IDEAS__ :
 - [x] Emissive Material
 - [x] Toggle Textures in GUI
 - [x] Occlusion Mapping
-- [ ] Normal mapping
-- [ ] Shadow Mapping
-- [ ] Deferred Rendering
-- [ ] Point Light
-- [ ] Multiple lights
+- [x] Deferred Rendering
 - [ ] Post Processing - SSAO
 - [ ] Post Processing - Bloom
+- [ ] Normal mapping
+- [ ] Shadow Mapping
+- [ ] Point Light
+- [ ] Multiple lights
 - [ ] HDRi
 - [ ] Motion blur
+
+__Deferred Rendering__ :
+- [x] Geometry Pass
+- [x] Shading Pass
+- [ ] GUI Options

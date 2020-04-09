@@ -25,39 +25,8 @@ void keyCallback(
 
 int ViewerApplication::run()
 {
-  // Loader shaders
-  const auto glslProgram =
-      compileProgram({m_ShadersRootPath / m_AppName / m_vertexShader,
-          m_ShadersRootPath / m_AppName / m_fragmentShader});
-
-  const auto modelViewProjMatrixLocation =
-      glGetUniformLocation(glslProgram.glId(), "uModelViewProjMatrix");
-  const auto modelViewMatrixLocation =
-      glGetUniformLocation(glslProgram.glId(), "uModelViewMatrix");
-  const auto normalMatrixLocation =
-      glGetUniformLocation(glslProgram.glId(), "uNormalMatrix");
-  const auto uLightDirectionLocation =
-      glGetUniformLocation(glslProgram.glId(), "uLightDirection");
-  const auto uLightIntensityLocation =
-      glGetUniformLocation(glslProgram.glId(), "uLightIntensity");
-  const auto uBaseColorTextureLocation =
-      glGetUniformLocation(glslProgram.glId(), "uBaseColorTexture");
-  const auto uBaseColorFactorLocation =
-      glGetUniformLocation(glslProgram.glId(), "uBaseColorFactor");
-  const auto uMetallicFactorLocation =
-      glGetUniformLocation(glslProgram.glId(), "uMetallicFactor");
-  const auto uRoughnessFactorLocation =
-      glGetUniformLocation(glslProgram.glId(), "uRoughnessFactor");
-  const auto uMetallicRoughnessTextureLocation =
-      glGetUniformLocation(glslProgram.glId(), "uMetallicRoughnessTexture");
-  const auto uEmissiveTextureLocation =
-      glGetUniformLocation(glslProgram.glId(), "uEmissiveTexture");
-  const auto uEmissiveFactorLocation =
-      glGetUniformLocation(glslProgram.glId(), "uEmissiveFactor");
-  const auto uOcclusionTextureLocation =
-      glGetUniformLocation(glslProgram.glId(), "uOcclusionTexture");
-  const auto uOcclusionStrengthLocation =
-      glGetUniformLocation(glslProgram.glId(), "uOcclusionStrength");
+  initPrograms();
+  initUniforms();
 
   tinygltf::Model model;
   // Load the glTF file
@@ -104,12 +73,12 @@ int ViewerApplication::run()
 
   // Setup OpenGL state for rendering
   glEnable(GL_DEPTH_TEST);
-  glslProgram.use();
+  // geometryPassProgram.use();
 
   // Init light parameters
   glm::vec3 lightDirection(1.f, 1.f, 1.f);
   glm::vec3 lightIntensity(1.f, 1.f, 1.f);
-  const auto occlusionStrength = 0.f;
+  auto occlusionStrength = 0u;
 
   // Bolleans to toggle features in GUI
   bool useBaseColor = true;
@@ -136,7 +105,6 @@ int ViewerApplication::run()
       float emissiveFactor[] = {1.f, 1.f, 1.f};
       // Default Occlusion
       auto occlusionTex = 0u;
-      auto occlusionStrength = 0u;
       
       // Base color texture
       if (useBaseColor && material.pbrMetallicRoughness.baseColorTexture.index >= 0) {
@@ -149,8 +117,8 @@ int ViewerApplication::run()
 
       glActiveTexture(GL_TEXTURE0);
       glBindTexture(GL_TEXTURE_2D, baseColorTex);
-      glUniform1i(uBaseColorTextureLocation, 0);
-      glUniform4f(uBaseColorFactorLocation,
+      glUniform1i(m_uBaseColorTextureLocation, 0);
+      glUniform4f(m_uBaseColorFactorLocation,
         baseColorFactor[0],
         baseColorFactor[1],
         baseColorFactor[2],
@@ -165,9 +133,9 @@ int ViewerApplication::run()
 
       glActiveTexture(GL_TEXTURE1);
       glBindTexture(GL_TEXTURE_2D, metallicRoughnessTex);
-      glUniform1i(uMetallicRoughnessTextureLocation, 1);
-      glUniform1f(uMetallicFactorLocation, metallicFactor);
-      glUniform1f(uRoughnessFactorLocation, roughnessFactor);
+      glUniform1i(m_uMetallicRoughnessTextureLocation, 1);
+      glUniform1f(m_uMetallicFactorLocation, metallicFactor);
+      glUniform1f(m_uRoughnessFactorLocation, roughnessFactor);
 
       // EmissiveTexture
       if (useEmissive && material.emissiveTexture.index >= 0) {
@@ -179,8 +147,8 @@ int ViewerApplication::run()
 
       glActiveTexture(GL_TEXTURE2);
       glBindTexture(GL_TEXTURE_2D, emissiveTex);
-      glUniform1i(uEmissiveTextureLocation, 2);
-      glUniform3f(uEmissiveFactorLocation, 
+      glUniform1i(m_uEmissiveTextureLocation, 2);
+      glUniform3f(m_uEmissiveFactorLocation, 
         emissiveFactor[0],
         emissiveFactor[1],
         emissiveFactor[2]);
@@ -193,8 +161,8 @@ int ViewerApplication::run()
 
       glActiveTexture(GL_TEXTURE3);
       glBindTexture(GL_TEXTURE_2D, occlusionTex);
-      glUniform1i(uOcclusionTextureLocation, 3);
-      glUniform1f(uOcclusionStrengthLocation, occlusionStrength);
+      glUniform1i(m_uOcclusionTextureLocation, 3);
+      // glUniform1f(m_uOcclusionStrengthLocation, occlusionStrength);
 
       return;
     }
@@ -202,8 +170,8 @@ int ViewerApplication::run()
     // Set default white texture if no material
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, whiteTexture);
-    glUniform1i(uBaseColorTextureLocation, 0);
-    glUniform4f(uBaseColorFactorLocation, 
+    glUniform1i(m_uBaseColorTextureLocation, 0);
+    glUniform4f(m_uBaseColorFactorLocation, 
       baseColorFactor[0], 
       baseColorFactor[1], 
       baseColorFactor[2], 
@@ -217,17 +185,17 @@ int ViewerApplication::run()
 
     const auto viewMatrix = camera.getViewMatrix();
 
-    if (uLightDirectionLocation >= 0) {
-      const auto lightDirectionInViewSpace =
-        glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
-      glUniform3f(uLightDirectionLocation, lightDirectionInViewSpace[0],
-        lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
-    }
+    // if (m_uLightDirectionLocation >= 0) {
+    //   const auto lightDirectionInViewSpace =
+    //     glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
+    //   glUniform3f(m_uLightDirectionLocation, lightDirectionInViewSpace[0],
+    //     lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
+    // }
 
-    if (uLightIntensityLocation >= 0) {
-      glUniform3f(uLightIntensityLocation, lightIntensity[0], lightIntensity[1],
-        lightIntensity[2]);
-    }
+    // if (m_uLightIntensityLocation >= 0) {
+    //   glUniform3f(m_uLightIntensityLocation, lightIntensity[0], lightIntensity[1],
+    //     lightIntensity[2]);
+    // }
 
     // The recursive function that should draw a node
     // We use a std::function because a simple lambda cannot be recursive
@@ -243,9 +211,9 @@ int ViewerApplication::run()
             const auto &modelViewProjectionMatrix = projMatrix * modelViewMatrix;
             const auto &normalMatrix = glm::transpose(glm::inverse(modelViewMatrix));
 
-            glUniformMatrix4fv(modelViewMatrixLocation, 1, GL_FALSE, glm::value_ptr(modelViewMatrix));
-            glUniformMatrix4fv(modelViewProjMatrixLocation, 1, GL_FALSE, glm::value_ptr(modelViewProjectionMatrix));
-            glUniformMatrix4fv(normalMatrixLocation, 1, GL_FALSE, glm::value_ptr(normalMatrix));
+            glUniformMatrix4fv(m_modelViewMatrixLocation, 1, GL_FALSE, glm::value_ptr(modelViewMatrix));
+            glUniformMatrix4fv(m_modelViewProjMatrixLocation, 1, GL_FALSE, glm::value_ptr(modelViewProjectionMatrix));
+            glUniformMatrix4fv(m_normalMatrixLocation, 1, GL_FALSE, glm::value_ptr(normalMatrix));
 
             const auto &mesh = model.meshes[node.mesh];
             const auto &vaoRange = meshIndexToVaoRange[node.mesh];
@@ -304,7 +272,58 @@ int ViewerApplication::run()
     const auto seconds = glfwGetTime();
 
     const auto camera = cameraController->getCamera();
+
+    // Geometry Pass
+    // Draw the scene in the GBuffers
+    m_geometryProgram.use();
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_GBufferFBO);
     drawScene(camera);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+    // GBuffer blit
+    /* glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBufferFBO);
+    glReadBuffer(GL_COLOR_ATTACHMENT0 + m_CurrentlyDisplayed);
+    glBlitFramebuffer(0, 0, m_nWindowWidth, m_nWindowHeight, 0, 0,
+        m_nWindowWidth, m_nWindowHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0); */
+    
+    {
+      // Shading Pass
+      m_shadingProgram.use();
+
+      // Set lights uniforms (uLightDirection uLightIntensity and uOcclusionStrength)
+      const auto viewMatrix = camera.getViewMatrix();
+      if (m_uLightDirectionLocation >= 0) {
+        const auto lightDirectionInViewSpace =
+            glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
+        glUniform3f(m_uLightDirectionLocation, lightDirectionInViewSpace[0],
+            lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
+      }
+
+      if (m_uLightIntensityLocation >= 0) {
+        glUniform3f(m_uLightIntensityLocation, lightIntensity[0], lightIntensity[1],
+            lightIntensity[2]);
+      }
+
+      glUniform1f(m_uOcclusionStrengthLocation, occlusionStrength);
+
+      // Binding des textures du GBuffer sur différentes texture units (de 0 à 4 inclut)
+      // Set des uniforms correspondant aux textures du GBuffer (chacune avec
+      // l'indice de la texture unit sur laquelle la texture correspondante est
+      // bindée)
+      for (int32_t i = GPosition; i < GDepth; ++i) {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
+        glUniform1i(m_uGBufferSamplerLocations[i], i);
+      }
+      
+      // Drawing the triangle covering the all screen
+      glViewport(0, 0, m_nWindowWidth, m_nWindowHeight);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      glBindVertexArray(m_TriangleVAO);
+      glDrawArrays(GL_TRIANGLES, 0, 3);
+      glBindVertexArray(0);
+    }
 
     // GUI code:
     imguiNewFrame();
@@ -379,6 +398,25 @@ int ViewerApplication::run()
           ImGui::Checkbox("Metallic / Roughness", &useMetallicRoughnessTexture);
           ImGui::Checkbox("Emissive Texture", &useEmissive);
           ImGui::Checkbox("Occlusion Map", &useOcclusionMap);
+        }
+
+        if (ImGui::CollapsingHeader("Deferred Shading", ImGuiTreeNodeFlags_DefaultOpen)) {
+          static int deferredShadingChoice = m_CurrentlyDisplayed;
+          if (ImGui::RadioButton("Position", &deferredShadingChoice, 0)) {
+            m_CurrentlyDisplayed = GPosition;
+          }
+          if (ImGui::RadioButton("Normal", &deferredShadingChoice, 1)) {
+            m_CurrentlyDisplayed = GNormal;
+          }
+          if (ImGui::RadioButton("Diffuse", &deferredShadingChoice, 2)) {
+            m_CurrentlyDisplayed = GDiffuse;
+          }
+          if (ImGui::RadioButton("Metal / Roughness", &deferredShadingChoice, 3)) {
+            m_CurrentlyDisplayed = GMetalRoughness;
+          }
+          if (ImGui::RadioButton("Emissive", &deferredShadingChoice, 4)) {
+            m_CurrentlyDisplayed = GEmissive;
+          }
         }
       }
       ImGui::End();
@@ -587,6 +625,88 @@ GLuint ViewerApplication::createDefaultTexture() const {
   return whiteTexture;
 }
 
+void ViewerApplication::initPrograms() {
+  // Forward rendering program
+  m_forwardProgram = compileProgram({
+    m_ShadersRootPath / m_AppName / m_vertexShader,
+    m_ShadersRootPath / m_AppName / m_fragmentShader
+  });
+
+  // Geometry pass program
+  m_geometryProgram = compileProgram({
+    m_ShadersRootPath / m_AppName / m_geometryPassVSShader,
+    m_ShadersRootPath / m_AppName / m_geometryPassFSShader
+  });
+
+  // Shading pass program
+  m_shadingProgram = compileProgram({
+    m_ShadersRootPath / m_AppName / m_shadingPassVSShader,
+    m_ShadersRootPath / m_AppName / m_shadingPassFSShader
+  });
+}
+
+void ViewerApplication::initUniforms() {
+  // Geometry pass uniforms
+  m_modelViewProjMatrixLocation =
+      glGetUniformLocation(m_geometryProgram.glId(), "uModelViewProjMatrix");
+  m_modelViewMatrixLocation =
+      glGetUniformLocation(m_geometryProgram.glId(), "uModelViewMatrix");
+  m_normalMatrixLocation =
+      glGetUniformLocation(m_geometryProgram.glId(), "uNormalMatrix");
+  m_uBaseColorTextureLocation =
+      glGetUniformLocation(m_geometryProgram.glId(), "uBaseColorTexture");
+  m_uBaseColorFactorLocation =
+      glGetUniformLocation(m_geometryProgram.glId(), "uBaseColorFactor");
+  m_uMetallicFactorLocation =
+      glGetUniformLocation(m_geometryProgram.glId(), "uMetallicFactor");
+  m_uRoughnessFactorLocation =
+      glGetUniformLocation(m_geometryProgram.glId(), "uRoughnessFactor");
+  m_uMetallicRoughnessTextureLocation = 
+      glGetUniformLocation(m_geometryProgram.glId(), "uMetallicRoughnessTexture");
+  m_uEmissiveTextureLocation =
+      glGetUniformLocation(m_geometryProgram.glId(), "uEmissiveTexture");
+  m_uEmissiveFactorLocation =
+      glGetUniformLocation(m_geometryProgram.glId(), "uEmissiveFactor");
+  m_uOcclusionTextureLocation =
+      glGetUniformLocation(m_geometryProgram.glId(), "uOcclusionTexture");
+
+  // Shading pass uniforms
+    // Shading pass uniforms
+  m_uLightDirectionLocation =
+      glGetUniformLocation(m_shadingProgram.glId(), "uLightDirection");
+  m_uLightIntensityLocation =
+      glGetUniformLocation(m_shadingProgram.glId(), "uLightIntensity");
+  m_uOcclusionStrengthLocation =
+      glGetUniformLocation(m_shadingProgram.glId(), "uOcclusionStrength");
+  
+  m_uGBufferSamplerLocations[GPosition] =
+      glGetUniformLocation(m_shadingProgram.glId(), "uGPosition");
+  m_uGBufferSamplerLocations[GNormal] =
+      glGetUniformLocation(m_shadingProgram.glId(), "uGNormal");
+  m_uGBufferSamplerLocations[GDiffuse] =
+      glGetUniformLocation(m_shadingProgram.glId(), "uGDiffuse");
+  m_uGBufferSamplerLocations[GMetalRoughness] =
+      glGetUniformLocation(m_shadingProgram.glId(), "uGMetalRoughness");
+  m_uGBufferSamplerLocations[GEmissive] =
+      glGetUniformLocation(m_shadingProgram.glId(), "uGEmissive");
+}
+
+void ViewerApplication::initTriangle() {
+  glGenBuffers(1, &m_TriangleVBO);
+  glBindBuffer(GL_ARRAY_BUFFER, m_TriangleVBO);
+
+  GLfloat data[] = {-1, -1, 3, -1, -1, 3};
+  glBufferStorage(GL_ARRAY_BUFFER, sizeof(data), data, 0);
+
+  glGenVertexArrays(1, &m_TriangleVAO);
+  glBindVertexArray(m_TriangleVAO);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
+}
+
 ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
     uint32_t height, const fs::path &gltfFile,
     const std::vector<float> &lookatArgs, const std::string &vertexShader,
@@ -623,4 +743,47 @@ ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
   glfwSetKeyCallback(m_GLFWHandle.window(), keyCallback);
 
   printGLVersion();
+
+  const GLenum m_GBufferTextureFormat[GBufferTextureCount] = {
+      GL_RGB32F, 
+      GL_RGB32F, 
+      GL_RGB32F, 
+      GL_RGB32F, 
+      GL_RGB32F, 
+      // GL_RGBA32F, 
+      GL_DEPTH_COMPONENT32F};
+
+  // Init GBuffer
+  glGenTextures(GBufferTextureCount, m_GBufferTextures);
+
+  for (int32_t i = GPosition; i < GBufferTextureCount; ++i) {
+    glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
+    glTexStorage2D(GL_TEXTURE_2D, 1, m_GBufferTextureFormat[i], m_nWindowWidth,
+        m_nWindowHeight);
+  }
+  
+  glGenFramebuffers(1, &m_GBufferFBO);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_GBufferFBO);
+  for (int32_t i = GPosition; i < GDepth; ++i) {
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i,
+        GL_TEXTURE_2D, m_GBufferTextures[i], 0);
+  }
+  glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+      GL_TEXTURE_2D, m_GBufferTextures[GDepth], 0);
+
+  // we will write into 5 textures from the fragment shader (3 for now)
+  GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1,
+      GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
+  glDrawBuffers(5, drawBuffers);
+
+  GLenum status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+
+  if (status != GL_FRAMEBUFFER_COMPLETE) {
+    std::cerr << "FBO error, status: " << status << std::endl;
+    throw std::runtime_error("FBO error");
+  }
+
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+  initTriangle();
 }

@@ -17,7 +17,7 @@ class GLShader
   typedef std::unique_ptr<char[]> CharBuffer;
 
 public:
-  GLShader(GLenum type) : m_GLId(glCreateShader(type)) {}
+  GLShader(GLenum type) : m_GLId(glCreateShader(type)) { }
 
   ~GLShader() { glDeleteShader(m_GLId); }
 

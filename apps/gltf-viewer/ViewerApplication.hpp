@@ -16,6 +16,7 @@ public:
 
   int run();
 
+
 private:
   // A range of indices in a vector containing Vertex Array Objects
   struct VaoRange
@@ -38,13 +39,41 @@ private:
   const fs::path m_ShadersRootPath;
 
   fs::path m_gltfFilePath;
-  std::string m_vertexShader = "forward.vs.glsl";
-  std::string m_fragmentShader = "pbr_directional_light.fs.glsl";
+
+  std::string m_vertexShader = "geometryPass.vs.glsl";
+  std::string m_fragmentShader = "geometryPass.fs.glsl";
+  std::string m_geometryPassVSShader = "geometryPass.vs.glsl";
+  std::string m_geometryPassFSShader = "geometryPass.fs.glsl";
+  std::string m_shadingPassVSShader = "shadingPass.vs.glsl";
+  std::string m_shadingPassFSShader = "shadingPass.fs.glsl";
 
   bool m_hasUserCamera = false;
   Camera m_userCamera;
 
   fs::path m_OutputPath;
+
+  enum GBufferTextureType {
+    GPosition = 0,
+    GNormal,
+    GDiffuse,
+    GMetalRoughness,
+    GEmissive,
+    GDepth, // On doit créer une texture de depth mais on écrit pas
+            // directement dedans dans le FS. OpenGL le fait pour nous
+            // (et l'utilise).
+    GBufferTextureCount
+  };
+
+  GLuint m_GBufferTextures[GBufferTextureCount];
+  GLuint m_GBufferFBO;
+  GBufferTextureType m_CurrentlyDisplayed = GDiffuse;
+
+  // Triangle covering the whole screen, for the shading pass:
+  GLuint m_TriangleVBO = 0;
+  GLuint m_TriangleVAO = 0;
+
+  // Shading pass uniforms
+  GLint m_uGBufferSamplerLocations[GDepth];
 
   // Order is important here, see comment below
   const std::string m_ImGuiIniFilename;
@@ -63,4 +92,31 @@ private:
     the creation of a GLFW windows and thus a GL context which must exists
     before most of OpenGL function calls.
   */
+
+  // GL Programs
+  GLProgram m_shadingProgram;
+  GLProgram m_forwardProgram;
+  GLProgram m_geometryProgram;
+
+  // Geometry Pass Uniforms Locations
+  GLint m_modelViewProjMatrixLocation;
+  GLint m_modelViewMatrixLocation;
+  GLint m_normalMatrixLocation;
+  GLint m_uBaseColorTextureLocation;
+  GLint m_uBaseColorFactorLocation;
+  GLint m_uMetallicFactorLocation;
+  GLint m_uRoughnessFactorLocation;
+  GLint m_uMetallicRoughnessTextureLocation;
+  GLint m_uEmissiveTextureLocation;
+  GLint m_uEmissiveFactorLocation;
+  GLint m_uOcclusionTextureLocation;
+
+  GLint m_uLightDirectionLocation;
+  GLint m_uLightIntensityLocation;
+  GLint m_uOcclusionStrengthLocation;
+
+  void initPrograms();
+  void initUniforms();
+  void initTriangle();
+
 };
