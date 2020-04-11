@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <numeric>
+#include <random>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -15,6 +16,10 @@
 #include <stb_image_write.h>
 #include <tiny_gltf.h>
 
+float lerp(float a, float b, float f) {
+  return a + f * (b - a);
+}
+
 void keyCallback(
     GLFWwindow *window, int key, int scancode, int action, int mods)
 {
@@ -27,6 +32,71 @@ int ViewerApplication::run()
 {
   initPrograms();
   initUniforms();
+
+  // generate sample kernel
+  // ----------------------
+  std::uniform_real_distribution<GLfloat> randomFloats(0.0, 1.0); // generates random floats between 0.0 and 1.0
+  std::default_random_engine generator;
+  std::vector<glm::vec3> ssaoKernel;
+  for (unsigned int i = 0; i < 64; ++i) {
+    glm::vec3 sample(randomFloats(generator) * 2.0 - 1.0,
+        randomFloats(generator) * 2.0 - 1.0, randomFloats(generator));
+    sample = glm::normalize(sample);
+    sample *= randomFloats(generator);
+    float scale = float(i) / 64.0;
+
+    // scale samples s.t. they're more aligned to center of kernel
+    scale = lerp(0.1f, 1.0f, scale * scale);
+    sample *= scale;
+    ssaoKernel.push_back(sample);
+  }
+
+  // generate noise texture
+  // ----------------------
+  std::vector<glm::vec3> ssaoNoise;
+  for (unsigned int i = 0; i < 16; i++) {
+    glm::vec3 noise(
+      randomFloats(generator) * 2.0 - 1.0,
+      randomFloats(generator) * 2.0 - 1.0,
+      0.0f
+    ); // rotate around z-axis (in tangent space)
+    ssaoNoise.push_back(noise);
+  }
+  unsigned int noiseTexture;
+  glGenTextures(1, &noiseTexture);
+  glBindTexture(GL_TEXTURE_2D, noiseTexture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+  // also create framebuffer to hold SSAO processing stage 
+  // -----------------------------------------------------
+  unsigned int ssaoFBO, ssaoBlurFBO;
+  glGenFramebuffers(1, &ssaoFBO);  glGenFramebuffers(1, &ssaoBlurFBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+  unsigned int ssaoColorBuffer, ssaoColorBufferBlur;
+  // SSAO color buffer
+  glGenTextures(1, &ssaoColorBuffer);
+  glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_nWindowWidth, m_nWindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBuffer, 0);
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    std::cout << "SSAO Framebuffer not complete!" << std::endl;
+  // and blur stage
+  glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+  glGenTextures(1, &ssaoColorBufferBlur);
+  glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_nWindowWidth, m_nWindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBufferBlur, 0);
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    std::cout << "SSAO Blur Framebuffer not complete!" << std::endl;
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
   tinygltf::Model model;
   // Load the glTF file
@@ -76,8 +146,8 @@ int ViewerApplication::run()
   // geometryPassProgram.use();
 
   // Init light parameters
-  glm::vec3 lightDirection(1.f, 1.f, 1.f);
-  glm::vec3 lightIntensity(1.f, 1.f, 1.f);
+  glm::vec3 lightDirection(1.f);
+  glm::vec3 lightIntensity(3.f);
   auto occlusionStrength = 0u;
 
   // Bolleans to toggle features in GUI
@@ -280,50 +350,72 @@ int ViewerApplication::run()
     drawScene(camera);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
-    // GBuffer blit
-    /* glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBufferFBO);
-    glReadBuffer(GL_COLOR_ATTACHMENT0 + m_CurrentlyDisplayed);
-    glBlitFramebuffer(0, 0, m_nWindowWidth, m_nWindowHeight, 0, 0,
-        m_nWindowWidth, m_nWindowHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0); */
-    
-    {
-      // Shading Pass
-      m_shadingProgram.use();
+    // SSAO Pass
+    // use G-buffer to render SSAO texture
+    m_ssaoProgram.use();
+    glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+      glClear(GL_COLOR_BUFFER_BIT);
 
-      // Set lights uniforms (uLightDirection uLightIntensity and uOcclusionStrength)
-      const auto viewMatrix = camera.getViewMatrix();
-      if (m_uLightDirectionLocation >= 0) {
-        const auto lightDirectionInViewSpace =
-            glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
-        glUniform3f(m_uLightDirectionLocation, lightDirectionInViewSpace[0],
-            lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
-      }
+      glActiveTexture(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[GPosition]);
+      glUniform1i(m_uGPositionLocation, GPosition);
 
-      if (m_uLightIntensityLocation >= 0) {
-        glUniform3f(m_uLightIntensityLocation, lightIntensity[0], lightIntensity[1],
-            lightIntensity[2]);
-      }
+      glActiveTexture(GL_TEXTURE1);
+      glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[GNormal]);
+      glUniform1i(m_uGNormalLocation, GNormal);
 
-      glUniform1f(m_uOcclusionStrengthLocation, occlusionStrength);
+      glActiveTexture(GL_TEXTURE2);
+      glBindTexture(GL_TEXTURE_2D, noiseTexture);
+      glUniform1i(m_uNoiseTexLocation, 2);
 
-      // Binding des textures du GBuffer sur différentes texture units (de 0 à 4 inclut)
-      // Set des uniforms correspondant aux textures du GBuffer (chacune avec
-      // l'indice de la texture unit sur laquelle la texture correspondante est
-      // bindée)
-      for (int32_t i = GPosition; i < GDepth; ++i) {
-        glActiveTexture(GL_TEXTURE0 + i);
-        glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
-        glUniform1i(m_uGBufferSamplerLocations[i], i);
-      }
+      // Send kernel + rotation
+      glUniform3fv(m_uSamplesLocation, 64, glm::value_ptr(ssaoKernel[0]));
+
+      glUniformMatrix4fv(m_uProjectionLocation, 1, GL_FALSE, glm::value_ptr(projMatrix));
+      renderTriangle();
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // if (m_CurrentlyDisplayed == GBufferTextureCount) { // Beauty
+    //   // Shading Pass
+    //   m_shadingProgram.use();
+
+    //   // Set lights uniforms (uLightDirection uLightIntensity and uOcclusionStrength)
+    //   const auto viewMatrix = camera.getViewMatrix();
+    //   if (m_uLightDirectionLocation >= 0) {
+    //     const auto lightDirectionInViewSpace =
+    //         glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
+    //     glUniform3f(m_uLightDirectionLocation, lightDirectionInViewSpace[0],
+    //         lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
+    //   }
+
+    //   if (m_uLightIntensityLocation >= 0) {
+    //     glUniform3f(m_uLightIntensityLocation, lightIntensity[0], lightIntensity[1],
+    //         lightIntensity[2]);
+    //   }
+
+    //   glUniform1f(m_uOcclusionStrengthLocation, occlusionStrength);
+
+    //   // Binding des textures du GBuffer sur différentes texture units (de 0 à 4 inclut)
+    //   // Set des uniforms correspondant aux textures du GBuffer (chacune avec
+    //   // l'indice de la texture unit sur laquelle la texture correspondante est
+    //   // bindée)
+    //   for (int32_t i = GPosition; i < GDepth; ++i) {
+    //     glActiveTexture(GL_TEXTURE0 + i);
+    //     glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
+    //     glUniform1i(m_uGBufferSamplerLocations[i], i);
+    //   }
+
+    // } else {
+
+    //   // GBuffer blit
+    //   glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBufferFBO);
+    //   glReadBuffer(GL_COLOR_ATTACHMENT0 + m_CurrentlyDisplayed);
+    //   glBlitFramebuffer(0, 0, m_nWindowWidth, m_nWindowHeight, 0, 0,
+    //       m_nWindowWidth, m_nWindowHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    //   glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
       
-      // Drawing the triangle covering the all screen
-      glViewport(0, 0, m_nWindowWidth, m_nWindowHeight);
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      glBindVertexArray(m_TriangleVAO);
-      glDrawArrays(GL_TRIANGLES, 0, 3);
-      glBindVertexArray(0);
-    }
+    // }
+    renderTriangle();
 
     // GUI code:
     imguiNewFrame();
@@ -386,7 +478,7 @@ int ViewerApplication::run()
           }
 
           static glm::vec3 lightColor(1.f, 1.f, 1.f);
-          static float lightIntensityFactor = 1.f;
+          static float lightIntensityFactor = 3.f;
           if (ImGui::ColorEdit3("Light Color", (float *)&lightColor) ||
               ImGui::SliderFloat("Ligth Intensity", &lightIntensityFactor, 0.f, 10.f)) {
             lightIntensity = lightColor * lightIntensityFactor;
@@ -400,22 +492,11 @@ int ViewerApplication::run()
           ImGui::Checkbox("Occlusion Map", &useOcclusionMap);
         }
 
-        if (ImGui::CollapsingHeader("Deferred Shading", ImGuiTreeNodeFlags_DefaultOpen)) {
-          static int deferredShadingChoice = m_CurrentlyDisplayed;
-          if (ImGui::RadioButton("Position", &deferredShadingChoice, 0)) {
-            m_CurrentlyDisplayed = GPosition;
-          }
-          if (ImGui::RadioButton("Normal", &deferredShadingChoice, 1)) {
-            m_CurrentlyDisplayed = GNormal;
-          }
-          if (ImGui::RadioButton("Diffuse", &deferredShadingChoice, 2)) {
-            m_CurrentlyDisplayed = GDiffuse;
-          }
-          if (ImGui::RadioButton("Metal / Roughness", &deferredShadingChoice, 3)) {
-            m_CurrentlyDisplayed = GMetalRoughness;
-          }
-          if (ImGui::RadioButton("Emissive", &deferredShadingChoice, 4)) {
-            m_CurrentlyDisplayed = GEmissive;
+        if (ImGui::CollapsingHeader("Deferred Shading - GBuffers", ImGuiTreeNodeFlags_DefaultOpen)) {
+          for (int32_t i = GPosition; i <= GBufferTextureCount; ++i) {
+            if (i != GDepth)
+              if (ImGui::RadioButton(m_GBufferTexNames[i], m_CurrentlyDisplayed == i))
+                m_CurrentlyDisplayed = GBufferTextureType(i);
           }
         }
       }
@@ -643,52 +724,45 @@ void ViewerApplication::initPrograms() {
     m_ShadersRootPath / m_AppName / m_shadingPassVSShader,
     m_ShadersRootPath / m_AppName / m_shadingPassFSShader
   });
+
+  // SSAO pass program
+  m_ssaoProgram = compileProgram({
+    m_ShadersRootPath / m_AppName / m_ssaoPassVSShader,
+    m_ShadersRootPath / m_AppName / m_ssaoPassFSShader
+  });
 }
 
 void ViewerApplication::initUniforms() {
   // Geometry pass uniforms
-  m_modelViewProjMatrixLocation =
-      glGetUniformLocation(m_geometryProgram.glId(), "uModelViewProjMatrix");
-  m_modelViewMatrixLocation =
-      glGetUniformLocation(m_geometryProgram.glId(), "uModelViewMatrix");
-  m_normalMatrixLocation =
-      glGetUniformLocation(m_geometryProgram.glId(), "uNormalMatrix");
-  m_uBaseColorTextureLocation =
-      glGetUniformLocation(m_geometryProgram.glId(), "uBaseColorTexture");
-  m_uBaseColorFactorLocation =
-      glGetUniformLocation(m_geometryProgram.glId(), "uBaseColorFactor");
-  m_uMetallicFactorLocation =
-      glGetUniformLocation(m_geometryProgram.glId(), "uMetallicFactor");
-  m_uRoughnessFactorLocation =
-      glGetUniformLocation(m_geometryProgram.glId(), "uRoughnessFactor");
-  m_uMetallicRoughnessTextureLocation = 
-      glGetUniformLocation(m_geometryProgram.glId(), "uMetallicRoughnessTexture");
-  m_uEmissiveTextureLocation =
-      glGetUniformLocation(m_geometryProgram.glId(), "uEmissiveTexture");
-  m_uEmissiveFactorLocation =
-      glGetUniformLocation(m_geometryProgram.glId(), "uEmissiveFactor");
-  m_uOcclusionTextureLocation =
-      glGetUniformLocation(m_geometryProgram.glId(), "uOcclusionTexture");
+  m_modelViewProjMatrixLocation = glGetUniformLocation(m_geometryProgram.glId(), "uModelViewProjMatrix");
+  m_modelViewMatrixLocation = glGetUniformLocation(m_geometryProgram.glId(), "uModelViewMatrix");
+  m_normalMatrixLocation = glGetUniformLocation(m_geometryProgram.glId(), "uNormalMatrix");
+  m_uBaseColorTextureLocation = glGetUniformLocation(m_geometryProgram.glId(), "uBaseColorTexture");
+  m_uBaseColorFactorLocation = glGetUniformLocation(m_geometryProgram.glId(), "uBaseColorFactor");
+  m_uMetallicFactorLocation = glGetUniformLocation(m_geometryProgram.glId(), "uMetallicFactor");
+  m_uRoughnessFactorLocation = glGetUniformLocation(m_geometryProgram.glId(), "uRoughnessFactor");
+  m_uMetallicRoughnessTextureLocation = glGetUniformLocation(m_geometryProgram.glId(), "uMetallicRoughnessTexture");
+  m_uEmissiveTextureLocation = glGetUniformLocation(m_geometryProgram.glId(), "uEmissiveTexture");
+  m_uEmissiveFactorLocation = glGetUniformLocation(m_geometryProgram.glId(), "uEmissiveFactor");
+  m_uOcclusionTextureLocation = glGetUniformLocation(m_geometryProgram.glId(), "uOcclusionTexture");
 
   // Shading pass uniforms
-    // Shading pass uniforms
-  m_uLightDirectionLocation =
-      glGetUniformLocation(m_shadingProgram.glId(), "uLightDirection");
-  m_uLightIntensityLocation =
-      glGetUniformLocation(m_shadingProgram.glId(), "uLightIntensity");
-  m_uOcclusionStrengthLocation =
-      glGetUniformLocation(m_shadingProgram.glId(), "uOcclusionStrength");
+  m_uLightDirectionLocation = glGetUniformLocation(m_shadingProgram.glId(), "uLightDirection");
+  m_uLightIntensityLocation = glGetUniformLocation(m_shadingProgram.glId(), "uLightIntensity");
+  m_uOcclusionStrengthLocation = glGetUniformLocation(m_shadingProgram.glId(), "uOcclusionStrength");
   
-  m_uGBufferSamplerLocations[GPosition] =
-      glGetUniformLocation(m_shadingProgram.glId(), "uGPosition");
-  m_uGBufferSamplerLocations[GNormal] =
-      glGetUniformLocation(m_shadingProgram.glId(), "uGNormal");
-  m_uGBufferSamplerLocations[GDiffuse] =
-      glGetUniformLocation(m_shadingProgram.glId(), "uGDiffuse");
-  m_uGBufferSamplerLocations[GMetalRoughness] =
-      glGetUniformLocation(m_shadingProgram.glId(), "uGMetalRoughness");
-  m_uGBufferSamplerLocations[GEmissive] =
-      glGetUniformLocation(m_shadingProgram.glId(), "uGEmissive");
+  m_uGBufferSamplerLocations[GPosition] = glGetUniformLocation(m_shadingProgram.glId(), "uGPosition");
+  m_uGBufferSamplerLocations[GNormal] = glGetUniformLocation(m_shadingProgram.glId(), "uGNormal");
+  m_uGBufferSamplerLocations[GDiffuse] = glGetUniformLocation(m_shadingProgram.glId(), "uGDiffuse");
+  m_uGBufferSamplerLocations[GMetalRoughness] = glGetUniformLocation(m_shadingProgram.glId(), "uGMetalRoughness");
+  m_uGBufferSamplerLocations[GEmissive] = glGetUniformLocation(m_shadingProgram.glId(), "uGEmissive");
+
+  // SSAO Uniforms
+  m_uProjectionLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uProjection");
+  m_uGPositionLocation = glGetUniformLocation(m_ssaoProgram.glId(), "gPosition");
+  m_uGNormalLocation = glGetUniformLocation(m_ssaoProgram.glId(), "gNormal");
+  m_uNoiseTexLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uNoiseTex");
+  m_uSamplesLocation = glGetUniformLocation(m_ssaoProgram.glId(), "samples");
 }
 
 void ViewerApplication::initTriangle() {
@@ -704,6 +778,15 @@ void ViewerApplication::initTriangle() {
   glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
   glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
+}
+
+// Drawing the triangle covering the all screen
+void ViewerApplication::renderTriangle() const {
+  glViewport(0, 0, m_nWindowWidth, m_nWindowHeight);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  glBindVertexArray(m_TriangleVAO);
+  glDrawArrays(GL_TRIANGLES, 0, 3);
   glBindVertexArray(0);
 }
 
@@ -744,15 +827,6 @@ ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
 
   printGLVersion();
 
-  const GLenum m_GBufferTextureFormat[GBufferTextureCount] = {
-      GL_RGB32F, 
-      GL_RGB32F, 
-      GL_RGB32F, 
-      GL_RGB32F, 
-      GL_RGB32F, 
-      // GL_RGBA32F, 
-      GL_DEPTH_COMPONENT32F};
-
   // Init GBuffer
   glGenTextures(GBufferTextureCount, m_GBufferTextures);
 
@@ -760,6 +834,10 @@ ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
     glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
     glTexStorage2D(GL_TEXTURE_2D, 1, m_GBufferTextureFormat[i], m_nWindowWidth,
         m_nWindowHeight);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   }
   
   glGenFramebuffers(1, &m_GBufferFBO);

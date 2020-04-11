@@ -46,6 +46,8 @@ private:
   std::string m_geometryPassFSShader = "geometryPass.fs.glsl";
   std::string m_shadingPassVSShader = "shadingPass.vs.glsl";
   std::string m_shadingPassFSShader = "shadingPass.fs.glsl";
+  std::string m_ssaoPassVSShader = "ssao.vs.glsl";
+  std::string m_ssaoPassFSShader = "ssao.fs.glsl";
 
   bool m_hasUserCamera = false;
   Camera m_userCamera;
@@ -64,16 +66,19 @@ private:
     GBufferTextureCount
   };
 
+  const char * m_GBufferTexNames[GBufferTextureCount + 1] = { "Position", "Normal", "Diffuse", "Occlusion / Metal / Roughness", "Emissive", "Depth", "Beauty" }; // Tricks, since we cant blit depth, we use its value to draw the result of the shading pass
+  const GLenum m_GBufferTextureFormat[GBufferTextureCount] = { GL_RGB32F, GL_RGB32F, GL_RGB32F, GL_RGB32F, GL_RGB32F, GL_DEPTH_COMPONENT32F };
+
   GLuint m_GBufferTextures[GBufferTextureCount];
   GLuint m_GBufferFBO;
-  GBufferTextureType m_CurrentlyDisplayed = GDiffuse;
+  GBufferTextureType m_CurrentlyDisplayed = GBufferTextureCount; // Beauty
+
+  // Shading pass uniforms
+  GLint m_uGBufferSamplerLocations[GDepth];
 
   // Triangle covering the whole screen, for the shading pass:
   GLuint m_TriangleVBO = 0;
   GLuint m_TriangleVAO = 0;
-
-  // Shading pass uniforms
-  GLint m_uGBufferSamplerLocations[GDepth];
 
   // Order is important here, see comment below
   const std::string m_ImGuiIniFilename;
@@ -97,6 +102,7 @@ private:
   GLProgram m_shadingProgram;
   GLProgram m_forwardProgram;
   GLProgram m_geometryProgram;
+  GLProgram m_ssaoProgram;
 
   // Geometry Pass Uniforms Locations
   GLint m_modelViewProjMatrixLocation;
@@ -115,8 +121,15 @@ private:
   GLint m_uLightIntensityLocation;
   GLint m_uOcclusionStrengthLocation;
 
+  // SSAO Pass Uniforms Locations
+  GLint m_uGPositionLocation;
+  GLint m_uGNormalLocation;
+  GLint m_uNoiseTexLocation;
+  GLint m_uProjectionLocation;
+  GLint m_uSamplesLocation;
+
   void initPrograms();
   void initUniforms();
   void initTriangle();
-
+  void renderTriangle() const;
 };
