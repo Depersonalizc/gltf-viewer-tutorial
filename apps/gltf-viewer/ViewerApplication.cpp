@@ -155,6 +155,7 @@ int ViewerApplication::run()
   bool useMetallicRoughnessTexture = true;
   bool useEmissive = true;
   bool useOcclusionMap = true;
+  bool useSSAO = true;
 
   const auto bindMaterial = [&](const auto materialIndex) {
     float baseColorFactor[] = {1.f, 1.f, 1.f, 1.f};
@@ -343,14 +344,14 @@ int ViewerApplication::run()
 
     const auto camera = cameraController->getCamera();
 
-    // Geometry Pass
+    // 1. Geometry Pass
     // Draw the scene in the GBuffers
     m_geometryProgram.use();
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_GBufferFBO);
     drawScene(camera);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
-    // SSAO Pass
+    // 2. SSAO Pass
     // use G-buffer to render SSAO texture
     m_ssaoProgram.use();
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
@@ -372,8 +373,27 @@ int ViewerApplication::run()
       glUniform3fv(m_uSamplesLocation, 64, glm::value_ptr(ssaoKernel[0]));
 
       glUniformMatrix4fv(m_uProjectionLocation, 1, GL_FALSE, glm::value_ptr(projMatrix));
+
+      glUniform1i(m_uKernelSizeLocation, m_ssaoKernelSize);
+      glUniform1f(m_uRadiusLocation, m_ssaoRadius);
+      glUniform1f(m_uBiasLocation, m_ssaoBias);
+
       renderTriangle();
+      // renderQuad();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // 3. Blur SSAO texture to remove noise
+    // ------------------------------------
+    m_ssaoBlurProgram.use();
+    glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+        glUniform1i(m_uSSAOInputLocation, 0);
+        renderTriangle();
+        // renderQuad();
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
 
     // if (m_CurrentlyDisplayed == GBufferTextureCount) { // Beauty
     //   // Shading Pass
@@ -485,19 +505,26 @@ int ViewerApplication::run()
           }
         }
 
-        if (ImGui::CollapsingHeader("Toggle Textures", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader("Toggle Textures")) {
           ImGui::Checkbox("Base Color", &useBaseColor);
           ImGui::Checkbox("Metallic / Roughness", &useMetallicRoughnessTexture);
           ImGui::Checkbox("Emissive Texture", &useEmissive);
           ImGui::Checkbox("Occlusion Map", &useOcclusionMap);
         }
 
-        if (ImGui::CollapsingHeader("Deferred Shading - GBuffers", ImGuiTreeNodeFlags_DefaultOpen)) {
+        if (ImGui::CollapsingHeader("Deferred Shading - GBuffers")) {
           for (int32_t i = GPosition; i <= GBufferTextureCount; ++i) {
             if (i != GDepth)
               if (ImGui::RadioButton(m_GBufferTexNames[i], m_CurrentlyDisplayed == i))
                 m_CurrentlyDisplayed = GBufferTextureType(i);
           }
+        }
+
+        if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen)) {
+          ImGui::Checkbox("Enable", &useSSAO);
+          ImGui::SliderInt("Kernel Size", &m_ssaoKernelSize, 0, 64);
+          ImGui::SliderFloat("Radius", &m_ssaoRadius, 0.f, 5.f);
+          ImGui::SliderFloat("Bias", &m_ssaoBias, 0.f, 1.f);
         }
       }
       ImGui::End();
@@ -730,6 +757,12 @@ void ViewerApplication::initPrograms() {
     m_ShadersRootPath / m_AppName / m_ssaoPassVSShader,
     m_ShadersRootPath / m_AppName / m_ssaoPassFSShader
   });
+
+  // SSAO blur program
+  m_ssaoBlurProgram = compileProgram({
+    m_ShadersRootPath / m_AppName / m_ssaoPassVSShader,
+    m_ShadersRootPath / m_AppName / m_ssaoBlurFSShader
+  });
 }
 
 void ViewerApplication::initUniforms() {
@@ -763,19 +796,34 @@ void ViewerApplication::initUniforms() {
   m_uGNormalLocation = glGetUniformLocation(m_ssaoProgram.glId(), "gNormal");
   m_uNoiseTexLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uNoiseTex");
   m_uSamplesLocation = glGetUniformLocation(m_ssaoProgram.glId(), "samples");
+  m_uKernelSizeLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uKernelSize");
+  m_uRadiusLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uRadius");
+  m_uBiasLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uBias");
+
+  // SSAO Blur Uniforms
+  m_uSSAOInputLocation = glGetUniformLocation(m_ssaoBlurProgram.glId(), "ssaoInput");
 }
 
 void ViewerApplication::initTriangle() {
   glGenBuffers(1, &m_TriangleVBO);
   glBindBuffer(GL_ARRAY_BUFFER, m_TriangleVBO);
 
-  GLfloat data[] = {-1, -1, 3, -1, -1, 3};
+  GLfloat data[] = {
+    // Positions  // Texture coords
+    -1.f, -1.f,   0.f,  0.f, 
+     3.f, -1.f,   2.f,  0.f,
+    -1.f,  3.f,   0.f,  2.f
+  };
   glBufferStorage(GL_ARRAY_BUFFER, sizeof(data), data, 0);
 
   glGenVertexArrays(1, &m_TriangleVAO);
   glBindVertexArray(m_TriangleVAO);
+
   glEnableVertexAttribArray(0);
-  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+  glEnableVertexAttribArray(1);
+
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *) 0);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *) (2 * sizeof(float)));
 
   glBindBuffer(GL_ARRAY_BUFFER, 0);
   glBindVertexArray(0);

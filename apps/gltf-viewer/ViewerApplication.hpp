@@ -48,6 +48,7 @@ private:
   std::string m_shadingPassFSShader = "shadingPass.fs.glsl";
   std::string m_ssaoPassVSShader = "ssao.vs.glsl";
   std::string m_ssaoPassFSShader = "ssao.fs.glsl";
+  std::string m_ssaoBlurFSShader = "ssaoBlur.fs.glsl";
 
   bool m_hasUserCamera = false;
   Camera m_userCamera;
@@ -103,6 +104,7 @@ private:
   GLProgram m_forwardProgram;
   GLProgram m_geometryProgram;
   GLProgram m_ssaoProgram;
+  GLProgram m_ssaoBlurProgram;
 
   // Geometry Pass Uniforms Locations
   GLint m_modelViewProjMatrixLocation;
@@ -128,8 +130,20 @@ private:
   GLint m_uProjectionLocation;
   GLint m_uSamplesLocation;
 
+  GLint m_uKernelSizeLocation;
+  GLint m_uRadiusLocation;
+  GLint m_uBiasLocation;
+
+  // SSAO Blur Uniforms Locations
+  GLint m_uSSAOInputLocation;
+
   void initPrograms();
   void initUniforms();
   void initTriangle();
   void renderTriangle() const;
+
+  // SSAO parameters
+  GLint m_ssaoKernelSize = 32;
+  GLfloat m_ssaoRadius = 0.5f;
+  GLfloat m_ssaoBias = 0.025f;
 };
