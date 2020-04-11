@@ -7,7 +7,6 @@ uniform sampler2D ssaoInput;
 out float fColor;
 
 void main() {
-    vec3 azeaze = texture(ssaoInput, vTexCoords).rgb;
     vec2 texelSize = 1.0 / vec2(textureSize(ssaoInput, 0));
     float result = 0.0;
     for (int x = -2; x < 2; ++x)

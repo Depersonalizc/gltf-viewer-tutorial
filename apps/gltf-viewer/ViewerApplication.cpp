@@ -352,7 +352,7 @@ int ViewerApplication::run()
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
     // 2. SSAO Pass
-    // use G-buffer to render SSAO texture
+    // Use G-buffer to render SSAO texture
     m_ssaoProgram.use();
     glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
       glClear(GL_COLOR_BUFFER_BIT);
@@ -379,7 +379,6 @@ int ViewerApplication::run()
       glUniform1f(m_uBiasLocation, m_ssaoBias);
 
       renderTriangle();
-      // renderQuad();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // 3. Blur SSAO texture to remove noise
@@ -391,51 +390,55 @@ int ViewerApplication::run()
         glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
         glUniform1i(m_uSSAOInputLocation, 0);
         renderTriangle();
-        // renderQuad();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 
-    // if (m_CurrentlyDisplayed == GBufferTextureCount) { // Beauty
-    //   // Shading Pass
-    //   m_shadingProgram.use();
+    if (m_CurrentlyDisplayed == GBufferTextureCount) { // Beauty
+      // Shading Pass
+      m_shadingProgram.use();
 
-    //   // Set lights uniforms (uLightDirection uLightIntensity and uOcclusionStrength)
-    //   const auto viewMatrix = camera.getViewMatrix();
-    //   if (m_uLightDirectionLocation >= 0) {
-    //     const auto lightDirectionInViewSpace =
-    //         glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
-    //     glUniform3f(m_uLightDirectionLocation, lightDirectionInViewSpace[0],
-    //         lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
-    //   }
+      // Set lights uniforms (uLightDirection uLightIntensity and uOcclusionStrength)
+      const auto viewMatrix = camera.getViewMatrix();
+      if (m_uLightDirectionLocation >= 0) {
+        const auto lightDirectionInViewSpace =
+            glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
+        glUniform3f(m_uLightDirectionLocation, lightDirectionInViewSpace[0],
+            lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
+      }
 
-    //   if (m_uLightIntensityLocation >= 0) {
-    //     glUniform3f(m_uLightIntensityLocation, lightIntensity[0], lightIntensity[1],
-    //         lightIntensity[2]);
-    //   }
+      if (m_uLightIntensityLocation >= 0) {
+        glUniform3f(m_uLightIntensityLocation, lightIntensity[0], lightIntensity[1],
+            lightIntensity[2]);
+      }
 
-    //   glUniform1f(m_uOcclusionStrengthLocation, occlusionStrength);
+      glUniform1f(m_uOcclusionStrengthLocation, occlusionStrength);
 
-    //   // Binding des textures du GBuffer sur différentes texture units (de 0 à 4 inclut)
-    //   // Set des uniforms correspondant aux textures du GBuffer (chacune avec
-    //   // l'indice de la texture unit sur laquelle la texture correspondante est
-    //   // bindée)
-    //   for (int32_t i = GPosition; i < GDepth; ++i) {
-    //     glActiveTexture(GL_TEXTURE0 + i);
-    //     glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
-    //     glUniform1i(m_uGBufferSamplerLocations[i], i);
-    //   }
+      // Binding des textures du GBuffer sur différentes texture units (de 0 à 4 inclut)
+      // Set des uniforms correspondant aux textures du GBuffer (chacune avec
+      // l'indice de la texture unit sur laquelle la texture correspondante est
+      // bindée)
+      for (int32_t i = GPosition; i < GDepth; ++i) {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
+        glUniform1i(m_uGBufferSamplerLocations[i], i);
+      }
 
-    // } else {
+      glActiveTexture(GL_TEXTURE5);
+      glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
+      glUniform1i(m_uSSAOLocation, 5);
 
-    //   // GBuffer blit
-    //   glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBufferFBO);
-    //   glReadBuffer(GL_COLOR_ATTACHMENT0 + m_CurrentlyDisplayed);
-    //   glBlitFramebuffer(0, 0, m_nWindowWidth, m_nWindowHeight, 0, 0,
-    //       m_nWindowWidth, m_nWindowHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
-    //   glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+      renderTriangle();
+
+    } else {
+
+      // GBuffer blit
+      glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBufferFBO);
+      glReadBuffer(GL_COLOR_ATTACHMENT0 + m_CurrentlyDisplayed);
+      glBlitFramebuffer(0, 0, m_nWindowWidth, m_nWindowHeight, 0, 0,
+          m_nWindowWidth, m_nWindowHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+      glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
       
-    // }
-    renderTriangle();
+    }
 
     // GUI code:
     imguiNewFrame();
@@ -783,6 +786,7 @@ void ViewerApplication::initUniforms() {
   m_uLightDirectionLocation = glGetUniformLocation(m_shadingProgram.glId(), "uLightDirection");
   m_uLightIntensityLocation = glGetUniformLocation(m_shadingProgram.glId(), "uLightIntensity");
   m_uOcclusionStrengthLocation = glGetUniformLocation(m_shadingProgram.glId(), "uOcclusionStrength");
+  m_uSSAOLocation = glGetUniformLocation(m_shadingProgram.glId(), "uSSAO");
   
   m_uGBufferSamplerLocations[GPosition] = glGetUniformLocation(m_shadingProgram.glId(), "uGPosition");
   m_uGBufferSamplerLocations[GNormal] = glGetUniformLocation(m_shadingProgram.glId(), "uGNormal");

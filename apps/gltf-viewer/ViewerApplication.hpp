@@ -119,9 +119,11 @@ private:
   GLint m_uEmissiveFactorLocation;
   GLint m_uOcclusionTextureLocation;
 
+  // Shading Pass Uniforms Locations
   GLint m_uLightDirectionLocation;
   GLint m_uLightIntensityLocation;
   GLint m_uOcclusionStrengthLocation;
+  GLint m_uSSAOLocation;
 
   // SSAO Pass Uniforms Locations
   GLint m_uGPositionLocation;

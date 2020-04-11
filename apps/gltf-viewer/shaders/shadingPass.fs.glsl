@@ -4,12 +4,15 @@ uniform vec3 uLightDirection;
 uniform vec3 uLightIntensity;
 uniform float uOcclusionStrength;
 
-// Everything is in view space
+// GBuffers: Everything is in view space
 uniform sampler2D uGPosition;
 uniform sampler2D uGNormal;
 uniform sampler2D uGDiffuse;
 uniform sampler2D uGMetalRoughness;
 uniform sampler2D uGEmissive;
+
+// Screen Space Ambiant Occlusion
+uniform sampler2D uSSAO;
 
 out vec3 fColor;
 
@@ -61,12 +64,16 @@ void main()
   float metallic = vec3(texelFetch(uGMetalRoughness, ivec2(gl_FragCoord.xy), 0)).b;
   float roughness = vec3(texelFetch(uGMetalRoughness, ivec2(gl_FragCoord.xy), 0)).g;
 
-  // Occlusion
+  // Occlusion map
   float occlusion = vec3(texelFetch(uGMetalRoughness, ivec2(gl_FragCoord.xy), 0)).r;
   if (N != 0.f && occlusion == 0.f) occlusion = 1.f;
 
   // Emissive
   vec3 emissive = vec3(texelFetch(uGEmissive, ivec2(gl_FragCoord.xy), 0));
+
+  // SSAO
+  // float ambientOcclusion = texture(ssao, TexCoords).r;
+  float ambientOcclusion = vec3(texelFetch(uSSAO, ivec2(gl_FragCoord.xy), 0)).r;
 
   float alpha = roughness * roughness;
   float alpha_squared = alpha * alpha;
@@ -103,6 +110,7 @@ void main()
 
   vec3 nonOccludedColor = (f_diffuse + f_specular) * uLightIntensity * NdotL;
   vec3 occludedColor = mix(nonOccludedColor, nonOccludedColor * occlusion, uOcclusionStrength);
+  occludedColor *= ambientOcclusion;
 
   fColor = LINEARtoSRGB(occludedColor + emissive);
 }
