@@ -39,8 +39,11 @@ int ViewerApplication::run()
   std::default_random_engine generator;
   std::vector<glm::vec3> ssaoKernel;
   for (unsigned int i = 0; i < 64; ++i) {
-    glm::vec3 sample(randomFloats(generator) * 2.0 - 1.0,
-        randomFloats(generator) * 2.0 - 1.0, randomFloats(generator));
+    glm::vec3 sample(
+      randomFloats(generator) * 2.0 - 1.0,
+      randomFloats(generator) * 2.0 - 1.0,
+      randomFloats(generator)
+    );
     sample = glm::normalize(sample);
     sample *= randomFloats(generator);
     float scale = float(i) / 64.0;
@@ -143,7 +146,6 @@ int ViewerApplication::run()
 
   // Setup OpenGL state for rendering
   glEnable(GL_DEPTH_TEST);
-  // geometryPassProgram.use();
 
   // Init light parameters
   glm::vec3 lightDirection(1.f);
@@ -225,15 +227,15 @@ int ViewerApplication::run()
         emissiveFactor[2]);
 
       // OcclusionTexture
+      glActiveTexture(GL_TEXTURE3);
       if (useOcclusionMap && material.occlusionTexture.index >= 0) {
         occlusionTex = textureObjects[material.occlusionTexture.index];
         occlusionStrength = material.occlusionTexture.strength;
+        glBindTexture(GL_TEXTURE_2D, occlusionTex);
+      } else {
+        glBindTexture(GL_TEXTURE_2D, whiteTexture);
       }
-
-      glActiveTexture(GL_TEXTURE3);
-      glBindTexture(GL_TEXTURE_2D, occlusionTex);
       glUniform1i(m_uOcclusionTextureLocation, 3);
-      // glUniform1f(m_uOcclusionStrengthLocation, occlusionStrength);
 
       return;
     }
@@ -351,50 +353,58 @@ int ViewerApplication::run()
     drawScene(camera);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
-    // 2. SSAO Pass
-    // Use G-buffer to render SSAO texture
-    m_ssaoProgram.use();
-    glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
-      glClear(GL_COLOR_BUFFER_BIT);
-
-      glActiveTexture(GL_TEXTURE0);
-      glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[GPosition]);
-      glUniform1i(m_uGPositionLocation, GPosition);
-
-      glActiveTexture(GL_TEXTURE1);
-      glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[GNormal]);
-      glUniform1i(m_uGNormalLocation, GNormal);
-
-      glActiveTexture(GL_TEXTURE2);
-      glBindTexture(GL_TEXTURE_2D, noiseTexture);
-      glUniform1i(m_uNoiseTexLocation, 2);
-
-      // Send kernel + rotation
-      glUniform3fv(m_uSamplesLocation, 64, glm::value_ptr(ssaoKernel[0]));
-
-      glUniformMatrix4fv(m_uProjectionLocation, 1, GL_FALSE, glm::value_ptr(projMatrix));
-
-      glUniform1i(m_uKernelSizeLocation, m_ssaoKernelSize);
-      glUniform1f(m_uRadiusLocation, m_ssaoRadius);
-      glUniform1f(m_uBiasLocation, m_ssaoBias);
-
-      renderTriangle();
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // 3. Blur SSAO texture to remove noise
-    // ------------------------------------
-    m_ssaoBlurProgram.use();
-    glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+    if (useSSAO) {
+      // 2. SSAO Pass
+      // Use G-buffer to render SSAO texture
+      m_ssaoProgram.use();
+      glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
         glClear(GL_COLOR_BUFFER_BIT);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
-        glUniform1i(m_uSSAOInputLocation, 0);
-        renderTriangle();
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[GPosition]);
+        glUniform1i(m_uGPositionLocation, GPosition);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[GNormal]);
+        glUniform1i(m_uGNormalLocation, GNormal);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, noiseTexture);
+        glUniform1i(m_uNoiseTexLocation, 2);
+
+        // Send kernel + projection
+        glUniform3fv(m_uSamplesLocation, 64, glm::value_ptr(ssaoKernel[0]));
+        glUniformMatrix4fv(m_uProjectionLocation, 1, GL_FALSE, glm::value_ptr(projMatrix));
+
+        glUniform1i(m_uKernelSizeLocation, m_ssaoKernelSize);
+        glUniform1f(m_uRadiusLocation, m_ssaoRadius);
+        glUniform1f(m_uBiasLocation, m_ssaoBias);
+        glUniform1f(m_uSSAOIntensityLocation, m_ssaoIntensity);
+
+        renderTriangle();
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+      // 3. Blur SSAO texture to remove noise
+      // ------------------------------------
+      m_ssaoBlurProgram.use();
+      glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+          glClear(GL_COLOR_BUFFER_BIT);
+          glActiveTexture(GL_TEXTURE0);
+          glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+          glUniform1i(m_uSSAOInputLocation, 0);
+          renderTriangle();
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    } else {
+      glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+        glClearColor(1.f, 1.f, 1.f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(0.f, 0.f, 0.f, 1.f);
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 
     if (m_CurrentlyDisplayed == GBufferTextureCount) { // Beauty
       // Shading Pass
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
       m_shadingProgram.use();
 
       // Set lights uniforms (uLightDirection uLightIntensity and uOcclusionStrength)
@@ -429,6 +439,15 @@ int ViewerApplication::run()
 
       renderTriangle();
 
+    } else if (m_CurrentlyDisplayed == GDepth) {
+
+      m_displayDepthProgram.use();
+      glActiveTexture(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[GDepth]);
+      glUniform1i(m_uGDisplayDepthLocation, 0);
+
+      renderTriangle();
+
     } else {
 
       // GBuffer blit
@@ -437,7 +456,7 @@ int ViewerApplication::run()
       glBlitFramebuffer(0, 0, m_nWindowWidth, m_nWindowHeight, 0, 0,
           m_nWindowWidth, m_nWindowHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
       glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-      
+
     }
 
     // GUI code:
@@ -517,17 +536,19 @@ int ViewerApplication::run()
 
         if (ImGui::CollapsingHeader("Deferred Shading - GBuffers")) {
           for (int32_t i = GPosition; i <= GBufferTextureCount; ++i) {
-            if (i != GDepth)
-              if (ImGui::RadioButton(m_GBufferTexNames[i], m_CurrentlyDisplayed == i))
-                m_CurrentlyDisplayed = GBufferTextureType(i);
+            if (ImGui::RadioButton(m_GBufferTexNames[i], m_CurrentlyDisplayed == i))
+              m_CurrentlyDisplayed = GBufferTextureType(i);
           }
         }
 
         if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen)) {
           ImGui::Checkbox("Enable", &useSSAO);
-          ImGui::SliderInt("Kernel Size", &m_ssaoKernelSize, 0, 64);
-          ImGui::SliderFloat("Radius", &m_ssaoRadius, 0.f, 5.f);
-          ImGui::SliderFloat("Bias", &m_ssaoBias, 0.f, 1.f);
+          if (useSSAO) {
+            ImGui::SliderInt("Kernel Size", &m_ssaoKernelSize, 1, 64);
+            ImGui::SliderFloat("Radius", &m_ssaoRadius, 0.f, 5.f);
+            ImGui::SliderFloat("Bias", &m_ssaoBias, 0.f, 1.f);
+            ImGui::SliderFloat("Intensity", &m_ssaoIntensity, 0.f, 10.f);
+          }
         }
       }
       ImGui::End();
@@ -766,6 +787,12 @@ void ViewerApplication::initPrograms() {
     m_ShadersRootPath / m_AppName / m_ssaoPassVSShader,
     m_ShadersRootPath / m_AppName / m_ssaoBlurFSShader
   });
+
+  // Display depth program
+  m_displayDepthProgram = compileProgram({
+    m_ShadersRootPath / m_AppName / m_ssaoPassVSShader,
+    m_ShadersRootPath / m_AppName / m_displayDepthFSShader
+  });
 }
 
 void ViewerApplication::initUniforms() {
@@ -795,17 +822,21 @@ void ViewerApplication::initUniforms() {
   m_uGBufferSamplerLocations[GEmissive] = glGetUniformLocation(m_shadingProgram.glId(), "uGEmissive");
 
   // SSAO Uniforms
-  m_uProjectionLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uProjection");
   m_uGPositionLocation = glGetUniformLocation(m_ssaoProgram.glId(), "gPosition");
   m_uGNormalLocation = glGetUniformLocation(m_ssaoProgram.glId(), "gNormal");
   m_uNoiseTexLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uNoiseTex");
   m_uSamplesLocation = glGetUniformLocation(m_ssaoProgram.glId(), "samples");
+  m_uProjectionLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uProjection");
   m_uKernelSizeLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uKernelSize");
   m_uRadiusLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uRadius");
   m_uBiasLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uBias");
+  m_uSSAOIntensityLocation = glGetUniformLocation(m_ssaoProgram.glId(), "uIntensity");
 
   // SSAO Blur Uniforms
   m_uSSAOInputLocation = glGetUniformLocation(m_ssaoBlurProgram.glId(), "ssaoInput");
+
+  // Display Depth Uniforms
+  m_uGDisplayDepthLocation = glGetUniformLocation(m_ssaoBlurProgram.glId(), "uGDepth");
 }
 
 void ViewerApplication::initTriangle() {
@@ -886,12 +917,8 @@ ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
     glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
     glTexStorage2D(GL_TEXTURE_2D, 1, m_GBufferTextureFormat[i], m_nWindowWidth,
         m_nWindowHeight);
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
   }
-  
+
   glGenFramebuffers(1, &m_GBufferFBO);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_GBufferFBO);
   for (int32_t i = GPosition; i < GDepth; ++i) {
@@ -901,9 +928,8 @@ ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
   glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
       GL_TEXTURE_2D, m_GBufferTextures[GDepth], 0);
 
-  // we will write into 5 textures from the fragment shader (3 for now)
-  GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1,
-      GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
+  // We will write into 5 textures from the fragment shader
+  GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
   glDrawBuffers(5, drawBuffers);
 
   GLenum status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);

@@ -7,16 +7,16 @@ uniform sampler2D gNormal;
 uniform sampler2D uNoiseTex;
 
 uniform vec3 samples[64];
+uniform mat4 uProjection;
 
 // parameters (you'd probably want to use them as uniforms to more easily tweak the effect)
 uniform int uKernelSize; // maximum kernel size = 64
 uniform float uRadius;
 uniform float uBias;
+uniform float uIntensity;
 
 // tile noise texture over screen based on screen dimensions divided by noise size
 const vec2 noiseScale = vec2(1280.0/4.0, 720.0/4.0); 
-
-uniform mat4 uProjection;
 
 out float fColor;
 
@@ -51,9 +51,9 @@ void main()
         
         // Range check & accumulate
         float rangeCheck = smoothstep(0.0, 1.0, uRadius / abs(fragPos.z - sampleDepth));
-        occlusion += (sampleDepth >= sample.z + uBias ? 1.0 : 0.0) * rangeCheck;           
+        occlusion += (sampleDepth >= sample.z + uBias ? 1.0 : 0.0) * rangeCheck;
     }
     occlusion = 1.0 - (occlusion / uKernelSize);
     
-    fColor = occlusion;
+    fColor = pow(occlusion, uIntensity);
 }

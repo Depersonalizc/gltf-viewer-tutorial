@@ -49,6 +49,7 @@ private:
   std::string m_ssaoPassVSShader = "ssao.vs.glsl";
   std::string m_ssaoPassFSShader = "ssao.fs.glsl";
   std::string m_ssaoBlurFSShader = "ssaoBlur.fs.glsl";
+  std::string m_displayDepthFSShader = "displayDepth.fs.glsl";
 
   bool m_hasUserCamera = false;
   Camera m_userCamera;
@@ -105,6 +106,7 @@ private:
   GLProgram m_geometryProgram;
   GLProgram m_ssaoProgram;
   GLProgram m_ssaoBlurProgram;
+  GLProgram m_displayDepthProgram;
 
   // Geometry Pass Uniforms Locations
   GLint m_modelViewProjMatrixLocation;
@@ -135,9 +137,13 @@ private:
   GLint m_uKernelSizeLocation;
   GLint m_uRadiusLocation;
   GLint m_uBiasLocation;
+  GLint m_uSSAOIntensityLocation;
 
   // SSAO Blur Uniforms Locations
   GLint m_uSSAOInputLocation;
+
+  // Display Depth Uniforms Locations
+  GLint m_uGDisplayDepthLocation;
 
   void initPrograms();
   void initUniforms();
@@ -147,5 +153,6 @@ private:
   // SSAO parameters
   GLint m_ssaoKernelSize = 32;
   GLfloat m_ssaoRadius = 0.5f;
-  GLfloat m_ssaoBias = 0.025f;
+  GLfloat m_ssaoBias = 0.001f;
+  GLfloat m_ssaoIntensity = 3.f;
 };

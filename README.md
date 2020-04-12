@@ -23,7 +23,7 @@ __TODO / IDEAS__ :
 - [x] Toggle Textures in GUI
 - [x] Occlusion Mapping
 - [x] Deferred Rendering
-- [ ] Post Processing - SSAO
+- [x] Post Processing - SSAO
 - [ ] Post Processing - Bloom
 - [ ] Normal mapping
 - [ ] Shadow Mapping

@@ -66,13 +66,11 @@ void main()
 
   // Occlusion map
   float occlusion = vec3(texelFetch(uGMetalRoughness, ivec2(gl_FragCoord.xy), 0)).r;
-  if (N != 0.f && occlusion == 0.f) occlusion = 1.f;
 
   // Emissive
   vec3 emissive = vec3(texelFetch(uGEmissive, ivec2(gl_FragCoord.xy), 0));
 
   // SSAO
-  // float ambientOcclusion = texture(ssao, TexCoords).r;
   float ambientOcclusion = vec3(texelFetch(uSSAO, ivec2(gl_FragCoord.xy), 0)).r;
 
   float alpha = roughness * roughness;
@@ -112,5 +110,5 @@ void main()
   vec3 occludedColor = mix(nonOccludedColor, nonOccludedColor * occlusion, uOcclusionStrength);
   occludedColor *= ambientOcclusion;
 
-  fColor = LINEARtoSRGB(occludedColor + emissive);
+  fColor = LINEARtoSRGB(occludedColor) + emissive;
 }
