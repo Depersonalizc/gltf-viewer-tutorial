@@ -14,7 +14,9 @@ uniform sampler2D uGEmissive;
 // Screen Space Ambiant Occlusion
 uniform sampler2D uSSAO;
 
-out vec3 fColor;
+// out vec3 fColor;
+layout (location = 0) out vec3 fColor;
+layout (location = 1) out vec3 BrightColor;  
 
 // Constants
 const float GAMMA = 2.2;
@@ -111,4 +113,10 @@ void main()
   occludedColor *= ambientOcclusion;
 
   fColor = LINEARtoSRGB(occludedColor) + emissive;
+  float brightness = dot(fColor, vec3(0.2126, 0.7152, 0.0722));
+  if (brightness > 1.f) {
+    BrightColor = fColor + emissive;
+  } else {
+    BrightColor = vec3(0.f, 0.f, 0.f) + emissive;
+  }
 }

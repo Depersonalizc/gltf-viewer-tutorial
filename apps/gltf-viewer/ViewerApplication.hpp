@@ -50,6 +50,10 @@ private:
   std::string m_ssaoPassFSShader = "ssao.fs.glsl";
   std::string m_ssaoBlurFSShader = "ssaoBlur.fs.glsl";
   std::string m_displayDepthFSShader = "displayDepth.fs.glsl";
+  std::string m_blurVSShader = "blur.vs.glsl";
+  std::string m_blurFSShader = "blur.fs.glsl";
+  std::string m_bloomVSShader = "bloom.vs.glsl";
+  std::string m_bloomFSShader = "bloom.fs.glsl";
 
   bool m_hasUserCamera = false;
   Camera m_userCamera;
@@ -107,6 +111,8 @@ private:
   GLProgram m_ssaoProgram;
   GLProgram m_ssaoBlurProgram;
   GLProgram m_displayDepthProgram;
+  GLProgram m_blurProgram;
+  GLProgram m_bloomProgram;
 
   // Geometry Pass Uniforms Locations
   GLint m_modelViewProjMatrixLocation;
@@ -133,7 +139,6 @@ private:
   GLint m_uNoiseTexLocation;
   GLint m_uProjectionLocation;
   GLint m_uSamplesLocation;
-
   GLint m_uKernelSizeLocation;
   GLint m_uRadiusLocation;
   GLint m_uBiasLocation;
@@ -145,14 +150,34 @@ private:
   // Display Depth Uniforms Locations
   GLint m_uGDisplayDepthLocation;
 
+  // Bloom Blur Uniforms Locations
+  GLint m_uBlurHorizontalLocation;
+  GLint m_uBlurImageLocation;
+  GLint m_uBlurWeightLocation;
+
+  // Bloom Final Uniforms Locations
+  GLint m_uSceneLocation;
+  GLint m_uBloomBlurLocation;
+  GLint m_uUseBloomLocation;
+  GLint m_uBloomIntensityLocation;
+  GLint m_uExposureLocation;
+
   void initPrograms();
   void initUniforms();
   void initTriangle();
   void renderTriangle() const;
 
   // SSAO parameters
-  GLint m_ssaoKernelSize = 32;
-  GLfloat m_ssaoRadius = 0.5f;
-  GLfloat m_ssaoBias = 0.001f;
-  GLfloat m_ssaoIntensity = 3.f;
+  bool m_useSSAO = true;
+  int m_ssaoKernelSize = 32;
+  float m_ssaoRadius = 0.5f;
+  float m_ssaoBias = 0.001f;
+  float m_ssaoIntensity = 3.f;
+
+  // Bloom parameters
+  bool m_useBloom = true;
+  int m_bloomQuality = 5;
+  float m_bloomIntensity = 1.f;
+  glm::vec3 m_bloomTint = glm::vec3();
+  float m_exposure = 1.f;
 };

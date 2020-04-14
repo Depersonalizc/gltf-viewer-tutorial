@@ -33,6 +33,54 @@ int ViewerApplication::run()
   initPrograms();
   initUniforms();
 
+  // set up floating point framebuffer to render scene to
+  unsigned int hdrFBO;
+  glGenFramebuffers(1, &hdrFBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+  unsigned int colorBuffers[2];
+  glGenTextures(2, colorBuffers);
+  for (unsigned int i = 0; i < 2; i++) {
+    glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, m_nWindowWidth, m_nWindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    // attach texture to framebuffer
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i,
+        GL_TEXTURE_2D, colorBuffers[i], 0);
+  }
+
+  unsigned int attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+  glDrawBuffers(2, attachments);
+
+  // finally check if framebuffer is complete
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    std::cout << "Framebuffer not complete!" << std::endl;
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+  // PingPong
+  unsigned int pingpongFBO[2];
+  unsigned int pingpongBuffer[2];
+  glGenFramebuffers(2, pingpongFBO);
+  glGenTextures(2, pingpongBuffer);
+  for (unsigned int i = 0; i < 2; i++) {
+    glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
+    glBindTexture(GL_TEXTURE_2D, pingpongBuffer[i]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, m_nWindowWidth, m_nWindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 3);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongBuffer[i], 0);
+    // also check if framebuffers are complete (no need for depth buffer)
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+      std::cout << "Framebuffer not complete!" << std::endl;
+  }
+
+
   // generate sample kernel
   // ----------------------
   std::uniform_real_distribution<GLfloat> randomFloats(0.0, 1.0); // generates random floats between 0.0 and 1.0
@@ -157,7 +205,7 @@ int ViewerApplication::run()
   bool useMetallicRoughnessTexture = true;
   bool useEmissive = true;
   bool useOcclusionMap = true;
-  bool useSSAO = true;
+  m_useSSAO = true;
 
   const auto bindMaterial = [&](const auto materialIndex) {
     float baseColorFactor[] = {1.f, 1.f, 1.f, 1.f};
@@ -353,7 +401,7 @@ int ViewerApplication::run()
     drawScene(camera);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
-    if (useSSAO) {
+    if (m_useSSAO) {
       // 2. SSAO Pass
       // Use G-buffer to render SSAO texture
       m_ssaoProgram.use();
@@ -403,39 +451,89 @@ int ViewerApplication::run()
     }
 
     if (m_CurrentlyDisplayed == GBufferTextureCount) { // Beauty
-      // Shading Pass
+      // 4. Shading pass
+      // ------------------------------------
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      m_shadingProgram.use();
 
-      // Set lights uniforms (uLightDirection uLightIntensity and uOcclusionStrength)
-      const auto viewMatrix = camera.getViewMatrix();
-      if (m_uLightDirectionLocation >= 0) {
-        const auto lightDirectionInViewSpace =
-            glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
-        glUniform3f(m_uLightDirectionLocation, lightDirectionInViewSpace[0],
-            lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
+      glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+        m_shadingProgram.use();
+
+        // Set lights uniforms (uLightDirection uLightIntensity and uOcclusionStrength)
+        const auto viewMatrix = camera.getViewMatrix();
+        if (m_uLightDirectionLocation >= 0) {
+          const auto lightDirectionInViewSpace =
+              glm::normalize(glm::vec3(viewMatrix * glm::vec4(lightDirection, 0.)));
+          glUniform3f(m_uLightDirectionLocation, lightDirectionInViewSpace[0],
+              lightDirectionInViewSpace[1], lightDirectionInViewSpace[2]);
+        }
+
+        if (m_uLightIntensityLocation >= 0) {
+          glUniform3f(m_uLightIntensityLocation, lightIntensity[0], lightIntensity[1],
+              lightIntensity[2]);
+        }
+
+        glUniform1f(m_uOcclusionStrengthLocation, occlusionStrength);
+
+        // Binding des textures du GBuffer sur différentes texture units (de 0 à 4 inclut)
+        // Set des uniforms correspondant aux textures du GBuffer (chacune avec
+        // l'indice de la texture unit sur laquelle la texture correspondante est
+        // bindée)
+        for (int32_t i = GPosition; i < GDepth; ++i) {
+          glActiveTexture(GL_TEXTURE0 + i);
+          glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
+          glUniform1i(m_uGBufferSamplerLocations[i], i);
+        }
+
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
+        glUniform1i(m_uSSAOLocation, 5);
+
+        renderTriangle();
+
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+      // HDR buffer blit
+      // glBindFramebuffer(GL_READ_FRAMEBUFFER, hdrFBO);
+      // glReadBuffer(GL_COLOR_ATTACHMENT1);
+      // glBlitFramebuffer(0, 0, m_nWindowWidth, m_nWindowHeight, 0, 0,
+      //     m_nWindowWidth, m_nWindowHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+      // glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+
+      // 5. Blur bright fragments with two-pass Gaussian Blur 
+      // --------------------------------------------------
+      bool horizontal = true, first_iteration = true;
+      m_blurProgram.use();
+      for (unsigned int i = 0; i < m_bloomQuality; i++)
+      {
+          glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
+          glUniform1i(m_uBlurHorizontalLocation, horizontal);
+          glActiveTexture(GL_TEXTURE0);
+          glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongBuffer[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
+          glUniform1i(m_uBlurImageLocation, 0);
+          renderTriangle();
+          horizontal = !horizontal;
+          if (first_iteration)
+              first_iteration = false;
       }
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-      if (m_uLightIntensityLocation >= 0) {
-        glUniform3f(m_uLightIntensityLocation, lightIntensity[0], lightIntensity[1],
-            lightIntensity[2]);
-      }
+      // 3. now render floating point color buffer to 2D quad and tonemap HDR
+      // colors to default framebuffer's (clamped) color range
+      // ----------------------------------------------------------------------
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      m_bloomProgram.use();
 
-      glUniform1f(m_uOcclusionStrengthLocation, occlusionStrength);
+      glActiveTexture(GL_TEXTURE0);
+      glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+      glUniform1i(m_uSceneLocation, 0);
 
-      // Binding des textures du GBuffer sur différentes texture units (de 0 à 4 inclut)
-      // Set des uniforms correspondant aux textures du GBuffer (chacune avec
-      // l'indice de la texture unit sur laquelle la texture correspondante est
-      // bindée)
-      for (int32_t i = GPosition; i < GDepth; ++i) {
-        glActiveTexture(GL_TEXTURE0 + i);
-        glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
-        glUniform1i(m_uGBufferSamplerLocations[i], i);
-      }
+      glActiveTexture(GL_TEXTURE1);
+      glBindTexture(GL_TEXTURE_2D, pingpongBuffer[horizontal]);
+      glUniform1i(m_uBloomBlurLocation, 1);
 
-      glActiveTexture(GL_TEXTURE5);
-      glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
-      glUniform1i(m_uSSAOLocation, 5);
+      glUniform1i(m_uUseBloomLocation, m_useBloom);
+      glUniform1f(m_uBloomIntensityLocation, m_bloomIntensity);
+      glUniform1f(m_uExposureLocation, m_exposure);
 
       renderTriangle();
 
@@ -541,15 +639,25 @@ int ViewerApplication::run()
           }
         }
 
-        if (ImGui::CollapsingHeader("SSAO", ImGuiTreeNodeFlags_DefaultOpen)) {
-          ImGui::Checkbox("Enable", &useSSAO);
-          if (useSSAO) {
+        if (ImGui::CollapsingHeader("SSAO")) {
+          ImGui::Checkbox("Enable SSAO", &m_useSSAO);
+          if (m_useSSAO) {
             ImGui::SliderInt("Kernel Size", &m_ssaoKernelSize, 1, 64);
             ImGui::SliderFloat("Radius", &m_ssaoRadius, 0.f, 5.f);
             ImGui::SliderFloat("Bias", &m_ssaoBias, 0.f, 1.f);
             ImGui::SliderFloat("Intensity", &m_ssaoIntensity, 0.f, 10.f);
           }
         }
+
+        if (ImGui::CollapsingHeader("Bloom")) {
+          ImGui::Checkbox("Enable Bloom", &m_useBloom);
+          if (m_useBloom) {
+            ImGui::SliderInt("Quality", &m_bloomQuality, 2, 50);
+            ImGui::SliderFloat("Bloom Intensity", &m_bloomIntensity, 0.f, 10.f);
+            ImGui::SliderFloat("Exposure", &m_exposure, 0.f, 2.f);
+          }
+        }
+
       }
       ImGui::End();
     }
@@ -793,6 +901,18 @@ void ViewerApplication::initPrograms() {
     m_ShadersRootPath / m_AppName / m_ssaoPassVSShader,
     m_ShadersRootPath / m_AppName / m_displayDepthFSShader
   });
+
+  // Blur program (for bloom)
+  m_blurProgram = compileProgram({
+    m_ShadersRootPath / m_AppName / m_blurVSShader,
+    m_ShadersRootPath / m_AppName / m_blurFSShader
+  });
+
+  // Bloom final program (final pass)
+  m_bloomProgram = compileProgram({
+    m_ShadersRootPath / m_AppName / m_bloomVSShader,
+    m_ShadersRootPath / m_AppName / m_bloomFSShader
+  });
 }
 
 void ViewerApplication::initUniforms() {
@@ -814,7 +934,6 @@ void ViewerApplication::initUniforms() {
   m_uLightIntensityLocation = glGetUniformLocation(m_shadingProgram.glId(), "uLightIntensity");
   m_uOcclusionStrengthLocation = glGetUniformLocation(m_shadingProgram.glId(), "uOcclusionStrength");
   m_uSSAOLocation = glGetUniformLocation(m_shadingProgram.glId(), "uSSAO");
-  
   m_uGBufferSamplerLocations[GPosition] = glGetUniformLocation(m_shadingProgram.glId(), "uGPosition");
   m_uGBufferSamplerLocations[GNormal] = glGetUniformLocation(m_shadingProgram.glId(), "uGNormal");
   m_uGBufferSamplerLocations[GDiffuse] = glGetUniformLocation(m_shadingProgram.glId(), "uGDiffuse");
@@ -837,6 +956,17 @@ void ViewerApplication::initUniforms() {
 
   // Display Depth Uniforms
   m_uGDisplayDepthLocation = glGetUniformLocation(m_ssaoBlurProgram.glId(), "uGDepth");
+
+  // Bloom Blur Uniforms
+  m_uBlurHorizontalLocation = glGetUniformLocation(m_blurProgram.glId(), "uHorizontal");
+  m_uBlurImageLocation = glGetUniformLocation(m_blurProgram.glId(), "uImage");
+
+  // Final Bloom Uniforms
+  m_uSceneLocation = glGetUniformLocation(m_bloomProgram.glId(), "uScene");
+  m_uBloomBlurLocation = glGetUniformLocation(m_bloomProgram.glId(), "uBloomBlur");
+  m_uUseBloomLocation = glGetUniformLocation(m_bloomProgram.glId(), "uUseBloom");
+  m_uBloomIntensityLocation = glGetUniformLocation(m_bloomProgram.glId(), "uBloomIntensity");
+  m_uExposureLocation = glGetUniformLocation(m_bloomProgram.glId(), "uExposure");
 }
 
 void ViewerApplication::initTriangle() {
@@ -922,11 +1052,9 @@ ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
   glGenFramebuffers(1, &m_GBufferFBO);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_GBufferFBO);
   for (int32_t i = GPosition; i < GDepth; ++i) {
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i,
-        GL_TEXTURE_2D, m_GBufferTextures[i], 0);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, m_GBufferTextures[i], 0);
   }
-  glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-      GL_TEXTURE_2D, m_GBufferTextures[GDepth], 0);
+  glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_GBufferTextures[GDepth], 0);
 
   // We will write into 5 textures from the fragment shader
   GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
