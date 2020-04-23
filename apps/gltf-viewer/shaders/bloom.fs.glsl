@@ -29,19 +29,12 @@ vec4 SRGBtoLINEAR(vec4 srgbIn)
 out vec3 fColor;
 
 void main()
-{             
-    const float gamma = 2.2;
+{
     vec3 hdrColor = SRGBtoLINEAR(texture(uScene, vTexCoords)).rgb;      
     vec3 bloomColor = SRGBtoLINEAR(texture(uBloomBlur, vTexCoords)).rgb;
-    vec3 bloomTint = vec3(.2f, .7f, 1.f);
-    bloomColor = bloomColor * bloomTint * uBloomIntensity;
-    if (uUseBloom)
-        hdrColor += bloomColor; // additive blending
-    // tone mapping
-    vec3 result = vec3(1.0) - exp(-hdrColor * uExposure);
-    // also gamma correct while we're at it       
-    // result = pow(result, vec3(1.0 / gamma));
-    result = LINEARtoSRGB(result);
-    fColor = bloomColor * uBloomIntensity;
-    fColor = result;
+    if (uUseBloom) {
+      hdrColor += bloomColor * uBloomTint * uBloomIntensity; // Additive blending
+    }
+    vec3 result = vec3(1.0) - exp(-hdrColor * uExposure); // Tone mapping
+    fColor = LINEARtoSRGB(result); // Gamma Correction
 }

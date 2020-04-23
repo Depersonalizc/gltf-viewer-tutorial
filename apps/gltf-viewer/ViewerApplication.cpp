@@ -33,122 +33,6 @@ int ViewerApplication::run()
   initPrograms();
   initUniforms();
 
-  // set up floating point framebuffer to render scene to
-  unsigned int hdrFBO;
-  glGenFramebuffers(1, &hdrFBO);
-  glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-  unsigned int colorBuffers[2];
-  glGenTextures(2, colorBuffers);
-  for (unsigned int i = 0; i < 2; i++) {
-    glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, m_nWindowWidth, m_nWindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    // attach texture to framebuffer
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i,
-        GL_TEXTURE_2D, colorBuffers[i], 0);
-  }
-
-  unsigned int attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
-  glDrawBuffers(2, attachments);
-
-  // finally check if framebuffer is complete
-  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    std::cout << "Framebuffer not complete!" << std::endl;
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-  // PingPong
-  unsigned int pingpongFBO[2];
-  unsigned int pingpongBuffer[2];
-  glGenFramebuffers(2, pingpongFBO);
-  glGenTextures(2, pingpongBuffer);
-  for (unsigned int i = 0; i < 2; i++) {
-    glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
-    glBindTexture(GL_TEXTURE_2D, pingpongBuffer[i]);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, m_nWindowWidth, m_nWindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 3);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongBuffer[i], 0);
-    // also check if framebuffers are complete (no need for depth buffer)
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-      std::cout << "Framebuffer not complete!" << std::endl;
-  }
-
-
-  // generate sample kernel
-  // ----------------------
-  std::uniform_real_distribution<GLfloat> randomFloats(0.0, 1.0); // generates random floats between 0.0 and 1.0
-  std::default_random_engine generator;
-  std::vector<glm::vec3> ssaoKernel;
-  for (unsigned int i = 0; i < 64; ++i) {
-    glm::vec3 sample(
-      randomFloats(generator) * 2.0 - 1.0,
-      randomFloats(generator) * 2.0 - 1.0,
-      randomFloats(generator)
-    );
-    sample = glm::normalize(sample);
-    sample *= randomFloats(generator);
-    float scale = float(i) / 64.0;
-
-    // scale samples s.t. they're more aligned to center of kernel
-    scale = lerp(0.1f, 1.0f, scale * scale);
-    sample *= scale;
-    ssaoKernel.push_back(sample);
-  }
-
-  // generate noise texture
-  // ----------------------
-  std::vector<glm::vec3> ssaoNoise;
-  for (unsigned int i = 0; i < 16; i++) {
-    glm::vec3 noise(
-      randomFloats(generator) * 2.0 - 1.0,
-      randomFloats(generator) * 2.0 - 1.0,
-      0.0f
-    ); // rotate around z-axis (in tangent space)
-    ssaoNoise.push_back(noise);
-  }
-  unsigned int noiseTexture;
-  glGenTextures(1, &noiseTexture);
-  glBindTexture(GL_TEXTURE_2D, noiseTexture);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB32F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-
-  // also create framebuffer to hold SSAO processing stage 
-  // -----------------------------------------------------
-  unsigned int ssaoFBO, ssaoBlurFBO;
-  glGenFramebuffers(1, &ssaoFBO);  glGenFramebuffers(1, &ssaoBlurFBO);
-  glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
-  unsigned int ssaoColorBuffer, ssaoColorBufferBlur;
-  // SSAO color buffer
-  glGenTextures(1, &ssaoColorBuffer);
-  glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_nWindowWidth, m_nWindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBuffer, 0);
-  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    std::cout << "SSAO Framebuffer not complete!" << std::endl;
-  // and blur stage
-  glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
-  glGenTextures(1, &ssaoColorBufferBlur);
-  glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_nWindowWidth, m_nWindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBufferBlur, 0);
-  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    std::cout << "SSAO Blur Framebuffer not complete!" << std::endl;
-  glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
   tinygltf::Model model;
   // Load the glTF file
   if (!loadGltfFile(model)) {
@@ -405,7 +289,7 @@ int ViewerApplication::run()
       // 2. SSAO Pass
       // Use G-buffer to render SSAO texture
       m_ssaoProgram.use();
-      glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+      glBindFramebuffer(GL_FRAMEBUFFER, m_ssaoFBO);
         glClear(GL_COLOR_BUFFER_BIT);
 
         glActiveTexture(GL_TEXTURE0);
@@ -417,11 +301,11 @@ int ViewerApplication::run()
         glUniform1i(m_uGNormalLocation, GNormal);
 
         glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, noiseTexture);
+        glBindTexture(GL_TEXTURE_2D, m_noiseTexture);
         glUniform1i(m_uNoiseTexLocation, 2);
 
         // Send kernel + projection
-        glUniform3fv(m_uSamplesLocation, 64, glm::value_ptr(ssaoKernel[0]));
+        glUniform3fv(m_uSamplesLocation, 64, glm::value_ptr(m_ssaoKernel[0]));
         glUniformMatrix4fv(m_uProjectionLocation, 1, GL_FALSE, glm::value_ptr(projMatrix));
 
         glUniform1i(m_uKernelSizeLocation, m_ssaoKernelSize);
@@ -435,15 +319,15 @@ int ViewerApplication::run()
       // 3. Blur SSAO texture to remove noise
       // ------------------------------------
       m_ssaoBlurProgram.use();
-      glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+      glBindFramebuffer(GL_FRAMEBUFFER, m_ssaoBlurFBO);
           glClear(GL_COLOR_BUFFER_BIT);
           glActiveTexture(GL_TEXTURE0);
-          glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+          glBindTexture(GL_TEXTURE_2D, m_ssaoColorBuffer);
           glUniform1i(m_uSSAOInputLocation, 0);
           renderTriangle();
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
     } else {
-      glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+      glBindFramebuffer(GL_FRAMEBUFFER, m_ssaoBlurFBO);
         glClearColor(1.f, 1.f, 1.f, 1.f);
         glClear(GL_COLOR_BUFFER_BIT);
         glClearColor(0.f, 0.f, 0.f, 1.f);
@@ -455,7 +339,7 @@ int ViewerApplication::run()
       // ------------------------------------
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-      glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+      glBindFramebuffer(GL_FRAMEBUFFER, m_hdrFBO);
         m_shadingProgram.use();
 
         // Set lights uniforms (uLightDirection uLightIntensity and uOcclusionStrength)
@@ -485,15 +369,17 @@ int ViewerApplication::run()
         }
 
         glActiveTexture(GL_TEXTURE5);
-        glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
+        glBindTexture(GL_TEXTURE_2D, m_ssaoColorBufferBlur);
         glUniform1i(m_uSSAOLocation, 5);
+
+        glUniform1f(m_uBloomThresholdLocation, m_bloomThreshold);
 
         renderTriangle();
 
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
       // HDR buffer blit
-      // glBindFramebuffer(GL_READ_FRAMEBUFFER, hdrFBO);
+      // glBindFramebuffer(GL_READ_FRAMEBUFFER, m_hdrFBO);
       // glReadBuffer(GL_COLOR_ATTACHMENT1);
       // glBlitFramebuffer(0, 0, m_nWindowWidth, m_nWindowHeight, 0, 0,
       //     m_nWindowWidth, m_nWindowHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
@@ -501,38 +387,53 @@ int ViewerApplication::run()
 
       // 5. Blur bright fragments with two-pass Gaussian Blur 
       // --------------------------------------------------
-      bool horizontal = true, first_iteration = true;
-      m_blurProgram.use();
-      for (unsigned int i = 0; i < m_bloomQuality; i++)
-      {
-          glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
-          glUniform1i(m_uBlurHorizontalLocation, horizontal);
-          glActiveTexture(GL_TEXTURE0);
-          glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongBuffer[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
-          glUniform1i(m_uBlurImageLocation, 0);
-          renderTriangle();
-          horizontal = !horizontal;
-          if (first_iteration)
-              first_iteration = false;
-      }
-      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      if (m_useBloom) {
+        glCopyImageSubData(
+          m_colorBuffers[1], GL_TEXTURE_2D, 0, 0, 0, 0,
+          m_pingpongBuffer[0], GL_TEXTURE_2D, 0, 0, 0, 0,
+          m_nWindowWidth, m_nWindowHeight, 1
+        );
 
-      // 3. now render floating point color buffer to 2D quad and tonemap HDR
-      // colors to default framebuffer's (clamped) color range
+        bool horizontal = true, first_iteration = true;
+        m_blurProgram.use();
+        glUniform1i(m_uBlurMaxLodLocation, m_maxLod);
+
+        for (unsigned int i = 0; i < 2 * m_bloomQuality; i++)
+        {
+          glUniform1i(m_uBlurHorizontalLocation, horizontal);
+
+          glBindFramebuffer(GL_FRAMEBUFFER, m_pingpongFBO[horizontal]);
+
+          glActiveTexture(GL_TEXTURE0);
+          glBindTexture(GL_TEXTURE_2D, m_pingpongBuffer[!horizontal]);  // Bind texture of other framebuffer
+          glUniform1i(m_uBlurImageLocation, 0);
+
+          renderTriangle();
+          glGenerateMipmap(GL_TEXTURE_2D);
+
+          horizontal = !horizontal;
+        }
+        
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      }
+
+      // 6. Final pass, combine Scene color + blur (Additive blending)
       // ----------------------------------------------------------------------
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
       m_bloomProgram.use();
 
       glActiveTexture(GL_TEXTURE0);
-      glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+      glBindTexture(GL_TEXTURE_2D, m_colorBuffers[0]);
       glUniform1i(m_uSceneLocation, 0);
 
       glActiveTexture(GL_TEXTURE1);
-      glBindTexture(GL_TEXTURE_2D, pingpongBuffer[horizontal]);
+      glBindTexture(GL_TEXTURE_2D, m_pingpongBuffer[0]);
       glUniform1i(m_uBloomBlurLocation, 1);
 
       glUniform1i(m_uUseBloomLocation, m_useBloom);
       glUniform1f(m_uBloomIntensityLocation, m_bloomIntensity);
+      glUniform3f(m_uBloomTintLocation, m_bloomTint[0], m_bloomTint[1], m_bloomTint[2]);
       glUniform1f(m_uExposureLocation, m_exposure);
 
       renderTriangle();
@@ -652,7 +553,10 @@ int ViewerApplication::run()
         if (ImGui::CollapsingHeader("Bloom")) {
           ImGui::Checkbox("Enable Bloom", &m_useBloom);
           if (m_useBloom) {
-            ImGui::SliderInt("Quality", &m_bloomQuality, 2, 50);
+            ImGui::SliderInt("Quality", &m_bloomQuality, 0, 10);
+            ImGui::SliderInt("Radius (MaxLOD)", &m_maxLod, 0, 7);
+            ImGui::SliderFloat("Bloom Threshold", &m_bloomThreshold, 0.f, 3.f);
+            ImGui::ColorEdit3("Bloom Tint", (float *)&m_bloomTint);
             ImGui::SliderFloat("Bloom Intensity", &m_bloomIntensity, 0.f, 10.f);
             ImGui::SliderFloat("Exposure", &m_exposure, 0.f, 2.f);
           }
@@ -934,6 +838,7 @@ void ViewerApplication::initUniforms() {
   m_uLightIntensityLocation = glGetUniformLocation(m_shadingProgram.glId(), "uLightIntensity");
   m_uOcclusionStrengthLocation = glGetUniformLocation(m_shadingProgram.glId(), "uOcclusionStrength");
   m_uSSAOLocation = glGetUniformLocation(m_shadingProgram.glId(), "uSSAO");
+  m_uBloomThresholdLocation = glGetUniformLocation(m_shadingProgram.glId(), "uBloomThreshold");
   m_uGBufferSamplerLocations[GPosition] = glGetUniformLocation(m_shadingProgram.glId(), "uGPosition");
   m_uGBufferSamplerLocations[GNormal] = glGetUniformLocation(m_shadingProgram.glId(), "uGNormal");
   m_uGBufferSamplerLocations[GDiffuse] = glGetUniformLocation(m_shadingProgram.glId(), "uGDiffuse");
@@ -960,12 +865,14 @@ void ViewerApplication::initUniforms() {
   // Bloom Blur Uniforms
   m_uBlurHorizontalLocation = glGetUniformLocation(m_blurProgram.glId(), "uHorizontal");
   m_uBlurImageLocation = glGetUniformLocation(m_blurProgram.glId(), "uImage");
+  m_uBlurMaxLodLocation = glGetUniformLocation(m_blurProgram.glId(), "uMaxLod");
 
   // Final Bloom Uniforms
   m_uSceneLocation = glGetUniformLocation(m_bloomProgram.glId(), "uScene");
   m_uBloomBlurLocation = glGetUniformLocation(m_bloomProgram.glId(), "uBloomBlur");
   m_uUseBloomLocation = glGetUniformLocation(m_bloomProgram.glId(), "uUseBloom");
   m_uBloomIntensityLocation = glGetUniformLocation(m_bloomProgram.glId(), "uBloomIntensity");
+  m_uBloomTintLocation = glGetUniformLocation(m_bloomProgram.glId(), "uBloomTint");
   m_uExposureLocation = glGetUniformLocation(m_bloomProgram.glId(), "uExposure");
 }
 
@@ -1001,6 +908,160 @@ void ViewerApplication::renderTriangle() const {
   glBindVertexArray(m_TriangleVAO);
   glDrawArrays(GL_TRIANGLES, 0, 3);
   glBindVertexArray(0);
+}
+
+// Init GBuffers
+void ViewerApplication::initGBuffers() {
+  glGenTextures(GBufferTextureCount, m_GBufferTextures);
+
+  for (int32_t i = GPosition; i < GBufferTextureCount; ++i) {
+    glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
+    glTexStorage2D(GL_TEXTURE_2D, 1, m_GBufferTextureFormat[i], m_nWindowWidth,
+        m_nWindowHeight);
+  }
+
+  glGenFramebuffers(1, &m_GBufferFBO);
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_GBufferFBO);
+  for (int32_t i = GPosition; i < GDepth; ++i) {
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i,
+        GL_TEXTURE_2D, m_GBufferTextures[i], 0);
+  }
+  glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+      GL_TEXTURE_2D, m_GBufferTextures[GDepth], 0);
+
+  // We will write into 5 textures from the fragment shader
+  GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1,
+      GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
+  glDrawBuffers(5, drawBuffers);
+
+  GLenum status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
+
+  if (status != GL_FRAMEBUFFER_COMPLETE) {
+    std::cerr << "FBO error, status: " << status << std::endl;
+    throw std::runtime_error("FBO error");
+  }
+
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+}
+
+// Init SSAO Texures and Framebuffers
+void ViewerApplication::initSSAO() {
+  // Generate sample kernel
+  // ----------------------
+  std::uniform_real_distribution<GLfloat> randomFloats(
+      0.0, 1.0); // generates random floats between 0.0 and 1.0
+  std::default_random_engine generator;
+  for (unsigned int i = 0; i < 64; ++i) {
+    glm::vec3 sample(randomFloats(generator) * 2.0 - 1.0,
+        randomFloats(generator) * 2.0 - 1.0, randomFloats(generator));
+    sample = glm::normalize(sample);
+    sample *= randomFloats(generator);
+    float scale = float(i) / 64.0;
+
+    // scale samples s.t. they're more aligned to center of kernel
+    scale = lerp(0.1f, 1.0f, scale * scale);
+    sample *= scale;
+    m_ssaoKernel.push_back(sample);
+  }
+
+  // generate noise texture
+  // ----------------------
+  std::vector<glm::vec3> ssaoNoise;
+  for (unsigned int i = 0; i < 16; i++) {
+    glm::vec3 noise(randomFloats(generator) * 2.0 - 1.0,
+        randomFloats(generator) * 2.0 - 1.0,
+        0.0f); // rotate around z-axis (in tangent space)
+    ssaoNoise.push_back(noise);
+  }
+  m_noiseTexture;
+  glGenTextures(1, &m_noiseTexture);
+  glBindTexture(GL_TEXTURE_2D, m_noiseTexture);
+  glTexImage2D(
+      GL_TEXTURE_2D, 0, GL_RGB32F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+  // Also create framebuffer to hold SSAO processing stage
+  // -----------------------------------------------------
+  glGenFramebuffers(1, &m_ssaoFBO);
+  glGenFramebuffers(1, &m_ssaoBlurFBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, m_ssaoFBO);
+
+  // SSAO color buffer
+  glGenTextures(1, &m_ssaoColorBuffer);
+  glBindTexture(GL_TEXTURE_2D, m_ssaoColorBuffer);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_nWindowWidth, m_nWindowHeight, 0,
+      GL_RGB, GL_FLOAT, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glFramebufferTexture2D(
+      GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_ssaoColorBuffer, 0);
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    std::cout << "SSAO Framebuffer not complete!" << std::endl;
+
+  // And blur stage
+  glBindFramebuffer(GL_FRAMEBUFFER, m_ssaoBlurFBO);
+  glGenTextures(1, &m_ssaoColorBufferBlur);
+  glBindTexture(GL_TEXTURE_2D, m_ssaoColorBufferBlur);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, m_nWindowWidth, m_nWindowHeight, 0,
+      GL_RGB, GL_FLOAT, NULL);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+      m_ssaoColorBufferBlur, 0);
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    std::cout << "SSAO Blur Framebuffer not complete!" << std::endl;
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+// Init Bloom Texures and Framebuffers
+void ViewerApplication::initBloom() {
+  // Set up floating point framebuffer to render scene to
+  glGenFramebuffers(1, &m_hdrFBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, m_hdrFBO);
+  glGenTextures(2, m_colorBuffers);
+  for (unsigned int i = 0; i < 2; i++) {
+    glBindTexture(GL_TEXTURE_2D, m_colorBuffers[i]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, m_nWindowWidth, m_nWindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 7);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    // Attach texture to framebuffer
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i,
+        GL_TEXTURE_2D, m_colorBuffers[i], 0);
+  }
+
+  unsigned int attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+  glDrawBuffers(2, attachments);
+
+  // Finally check if framebuffer is complete
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+    std::cout << "Framebuffer not complete!" << std::endl;
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+  // PingPong
+  glGenFramebuffers(2, m_pingpongFBO);
+  glGenTextures(2, m_pingpongBuffer);
+  for (unsigned int i = 0; i < 2; i++) {
+    glBindFramebuffer(GL_FRAMEBUFFER, m_pingpongFBO[i]);
+    glBindTexture(GL_TEXTURE_2D, m_pingpongBuffer[i]);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, m_nWindowWidth, m_nWindowHeight, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 7);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_pingpongBuffer[i], 0);
+    // Also check if framebuffers are complete (no need for depth buffer)
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+      std::cout << "Framebuffer not complete!" << std::endl;
+  }
 }
 
 ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
@@ -1040,34 +1101,8 @@ ViewerApplication::ViewerApplication(const fs::path &appPath, uint32_t width,
 
   printGLVersion();
 
-  // Init GBuffer
-  glGenTextures(GBufferTextureCount, m_GBufferTextures);
-
-  for (int32_t i = GPosition; i < GBufferTextureCount; ++i) {
-    glBindTexture(GL_TEXTURE_2D, m_GBufferTextures[i]);
-    glTexStorage2D(GL_TEXTURE_2D, 1, m_GBufferTextureFormat[i], m_nWindowWidth,
-        m_nWindowHeight);
-  }
-
-  glGenFramebuffers(1, &m_GBufferFBO);
-  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_GBufferFBO);
-  for (int32_t i = GPosition; i < GDepth; ++i) {
-    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, m_GBufferTextures[i], 0);
-  }
-  glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_GBufferTextures[GDepth], 0);
-
-  // We will write into 5 textures from the fragment shader
-  GLenum drawBuffers[] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2, GL_COLOR_ATTACHMENT3, GL_COLOR_ATTACHMENT4};
-  glDrawBuffers(5, drawBuffers);
-
-  GLenum status = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
-
-  if (status != GL_FRAMEBUFFER_COMPLETE) {
-    std::cerr << "FBO error, status: " << status << std::endl;
-    throw std::runtime_error("FBO error");
-  }
-
-  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-
+  initGBuffers();
+  initSSAO();
+  initBloom();
   initTriangle();
 }

@@ -14,7 +14,9 @@ uniform sampler2D uGEmissive;
 // Screen Space Ambiant Occlusion
 uniform sampler2D uSSAO;
 
-// out vec3 fColor;
+// Bloom Threshold
+uniform float uBloomThreshold;
+
 layout (location = 0) out vec3 fColor;
 layout (location = 1) out vec3 BrightColor;  
 
@@ -114,8 +116,8 @@ void main()
 
   fColor = LINEARtoSRGB(occludedColor) + emissive;
   float brightness = dot(fColor, vec3(0.2126, 0.7152, 0.0722));
-  if (brightness > 1.f) {
-    BrightColor = fColor + emissive;
+  if (brightness > uBloomThreshold) {
+    BrightColor = fColor + 1.5f * emissive;
   } else {
     BrightColor = vec3(0.f, 0.f, 0.f) + emissive;
   }

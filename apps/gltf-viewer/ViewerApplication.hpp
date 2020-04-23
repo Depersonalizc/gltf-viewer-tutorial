@@ -79,9 +79,6 @@ private:
   GLuint m_GBufferFBO;
   GBufferTextureType m_CurrentlyDisplayed = GBufferTextureCount; // Beauty
 
-  // Shading pass uniforms
-  GLint m_uGBufferSamplerLocations[GDepth];
-
   // Triangle covering the whole screen, for the shading pass:
   GLuint m_TriangleVBO = 0;
   GLuint m_TriangleVAO = 0;
@@ -132,6 +129,7 @@ private:
   GLint m_uLightIntensityLocation;
   GLint m_uOcclusionStrengthLocation;
   GLint m_uSSAOLocation;
+  GLint m_uGBufferSamplerLocations[GDepth];
 
   // SSAO Pass Uniforms Locations
   GLint m_uGPositionLocation;
@@ -143,6 +141,7 @@ private:
   GLint m_uRadiusLocation;
   GLint m_uBiasLocation;
   GLint m_uSSAOIntensityLocation;
+  GLint m_uBloomThresholdLocation;
 
   // SSAO Blur Uniforms Locations
   GLint m_uSSAOInputLocation;
@@ -154,18 +153,35 @@ private:
   GLint m_uBlurHorizontalLocation;
   GLint m_uBlurImageLocation;
   GLint m_uBlurWeightLocation;
+  GLint m_uBlurMaxLodLocation;
 
   // Bloom Final Uniforms Locations
   GLint m_uSceneLocation;
   GLint m_uBloomBlurLocation;
   GLint m_uUseBloomLocation;
   GLint m_uBloomIntensityLocation;
+  GLint m_uBloomTintLocation;
   GLint m_uExposureLocation;
 
   void initPrograms();
   void initUniforms();
   void initTriangle();
   void renderTriangle() const;
+  void initGBuffers();
+  void initSSAO();
+  void initBloom();
+
+  // Init SSAO
+  unsigned int m_ssaoFBO, m_ssaoBlurFBO;
+  unsigned int m_noiseTexture;
+  std::vector<glm::vec3> m_ssaoKernel;
+  unsigned int m_ssaoColorBuffer, m_ssaoColorBufferBlur;
+
+  // Init Bloom
+  unsigned int m_hdrFBO;
+  unsigned int m_colorBuffers[2];
+  unsigned int m_pingpongFBO[2];
+  unsigned int m_pingpongBuffer[2];
 
   // SSAO parameters
   bool m_useSSAO = true;
@@ -176,8 +192,10 @@ private:
 
   // Bloom parameters
   bool m_useBloom = true;
-  int m_bloomQuality = 5;
-  float m_bloomIntensity = 1.f;
-  glm::vec3 m_bloomTint = glm::vec3();
+  int m_bloomQuality = 2;
+  int m_maxLod = 4;
+  float m_bloomThreshold = 1.f;
+  float m_bloomIntensity = 2.5f;
+  glm::vec3 m_bloomTint = glm::vec3(1.f, 1.f, 1.f);
   float m_exposure = 1.f;
 };
