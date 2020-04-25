@@ -8,6 +8,7 @@ uniform bool uUseBloom;
 uniform vec3 uBloomTint;
 uniform float uBloomIntensity;
 uniform float uExposure;
+uniform bool uShowBloomOnly;
 
 const float GAMMA = 2.2;
 const float INV_GAMMA = 1. / GAMMA;
@@ -30,11 +31,16 @@ out vec3 fColor;
 
 void main()
 {
-    vec3 hdrColor = SRGBtoLINEAR(texture(uScene, vTexCoords)).rgb;      
-    vec3 bloomColor = SRGBtoLINEAR(texture(uBloomBlur, vTexCoords)).rgb;
-    if (uUseBloom) {
-      hdrColor += bloomColor * uBloomTint * uBloomIntensity; // Additive blending
+  vec3 hdrColor = SRGBtoLINEAR(texture(uScene, vTexCoords)).rgb;      
+  vec3 bloomColor = SRGBtoLINEAR(texture(uBloomBlur, vTexCoords)).rgb;
+  bloomColor *= uBloomTint * uBloomIntensity;
+  if (uUseBloom) {
+    if (uShowBloomOnly) {
+      hdrColor = bloomColor;
+    } else {
+      hdrColor += bloomColor; // Additive blending
     }
-    vec3 result = vec3(1.0) - exp(-hdrColor * uExposure); // Tone mapping
-    fColor = LINEARtoSRGB(result); // Gamma Correction
+  }
+  vec3 result = vec3(1.0) - exp(-hdrColor * uExposure); // Tone mapping
+  fColor = LINEARtoSRGB(result); // Gamma Correction
 }

@@ -435,6 +435,7 @@ int ViewerApplication::run()
       glUniform1f(m_uBloomIntensityLocation, m_bloomIntensity);
       glUniform3f(m_uBloomTintLocation, m_bloomTint[0], m_bloomTint[1], m_bloomTint[2]);
       glUniform1f(m_uExposureLocation, m_exposure);
+      glUniform1f(m_uShowBloomOnlyLocation, m_showBloomOnly);
 
       renderTriangle();
 
@@ -553,6 +554,7 @@ int ViewerApplication::run()
         if (ImGui::CollapsingHeader("Bloom")) {
           ImGui::Checkbox("Enable Bloom", &m_useBloom);
           if (m_useBloom) {
+            ImGui::Checkbox("Show Bloom only", &m_showBloomOnly);
             ImGui::SliderInt("Quality", &m_bloomQuality, 0, 10);
             ImGui::SliderInt("Radius (MaxLOD)", &m_maxLod, 0, 7);
             ImGui::SliderFloat("Bloom Threshold", &m_bloomThreshold, 0.f, 3.f);
@@ -871,6 +873,7 @@ void ViewerApplication::initUniforms() {
   m_uBloomIntensityLocation = glGetUniformLocation(m_bloomProgram.glId(), "uBloomIntensity");
   m_uBloomTintLocation = glGetUniformLocation(m_bloomProgram.glId(), "uBloomTint");
   m_uExposureLocation = glGetUniformLocation(m_bloomProgram.glId(), "uExposure");
+  m_uShowBloomOnlyLocation = glGetUniformLocation(m_bloomProgram.glId(), "uShowBloomOnly");
 }
 
 void ViewerApplication::initTriangle() {

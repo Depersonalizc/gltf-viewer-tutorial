@@ -162,6 +162,7 @@ private:
   GLint m_uBloomIntensityLocation;
   GLint m_uBloomTintLocation;
   GLint m_uExposureLocation;
+  GLint m_uShowBloomOnlyLocation;
 
   void initPrograms();
   void initUniforms();
@@ -192,6 +193,7 @@ private:
 
   // Bloom parameters
   bool m_useBloom = true;
+  bool m_showBloomOnly = false;
   int m_bloomQuality = 2;
   int m_maxLod = 4;
   float m_bloomThreshold = 1.f;

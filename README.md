@@ -32,8 +32,3 @@ __TODO / IDEAS__ :
 - [ ] Multiple lights
 - [ ] HDRi
 - [ ] Motion blur
-
-__Deferred Rendering__ :
-- [x] Geometry Pass
-- [x] Shading Pass
-- [ ] GUI Options
