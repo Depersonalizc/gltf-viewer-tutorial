@@ -645,10 +645,9 @@ std::vector<GLuint> ViewerApplication::createVertexArrayObjects(const tinygltf::
     const auto &mesh = model.meshes[i];
     const auto vaoOffset = vertexArrayObjects.size();
     vertexArrayObjects.resize(vaoOffset + mesh.primitives.size());
-    meshIndexToVaoRange.push_back(VaoRange{GLsizei(vaoOffset), GLsizei(mesh.primitives.size())});
 
     auto &vaoRange = meshIndexToVaoRange[i];
-    vaoRange.begin = GLsizei(vertexArrayObjects.size()); // Range for this mesh will be at the end of vertexArrayObjects
+    vaoRange.begin = GLsizei(vaoOffset); // Range for this mesh will be at the end of vertexArrayObjects
     vaoRange.count = GLsizei(mesh.primitives.size()); // One VAO for each primitive
     glGenVertexArrays(vaoRange.count, &vertexArrayObjects[vaoRange.begin]);
 
@@ -659,7 +658,7 @@ std::vector<GLuint> ViewerApplication::createVertexArrayObjects(const tinygltf::
 
       // Loop over POSITION, NORMAL, TEXCOORD_0
       for (auto attribute : attributes) {
-        const auto iterator = primitive.attributes.find(attribute.first); // for example attribute.second = "POSITION"
+        const auto iterator = primitive.attributes.find(attribute.first); // for example attribute.first = "POSITION"
         if (iterator != end(primitive.attributes)) {
           const auto accessorIdx = (*iterator).second;
           const auto &accessor = model.accessors[accessorIdx];
@@ -690,17 +689,20 @@ std::vector<GLuint> ViewerApplication::createVertexArrayObjects(const tinygltf::
         const auto &bufferView = model.bufferViews[accessor.bufferView];
         const auto bufferIdx = bufferView.buffer;
 
+        assert(GL_ELEMENT_ARRAY_BUFFER == bufferView.target);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, bufferObjects[bufferIdx]);
       }
     }
   }
   glBindVertexArray(0); // Unbind VAO
 
+  std::clog << "Number of VAOs: " << vertexArrayObjects.size() << std::endl;
+
   return vertexArrayObjects;
 }
 
 std::vector<GLuint> ViewerApplication::createTextureObjects(const tinygltf::Model &model) const {
-  std::vector<GLuint> textureObjects;
+  std::vector<GLuint> textureObjects(model.textures.size(), 0);
 
   tinygltf::Sampler defaultSampler;
   defaultSampler.minFilter = GL_LINEAR;
@@ -709,27 +711,23 @@ std::vector<GLuint> ViewerApplication::createTextureObjects(const tinygltf::Mode
   defaultSampler.wrapT = GL_REPEAT;
   defaultSampler.wrapR = GL_REPEAT;
 
+  glActiveTexture(GL_TEXTURE0);
+  glGenTextures(GLsizei(model.textures.size()), textureObjects.data());
   for (size_t i = 0; i < model.textures.size(); ++i) {
     // Assume a texture object has been created and bound to GL_TEXTURE_2D
     const auto &texture = model.textures[i]; // get i-th texture
     assert(texture.source >= 0); // ensure a source image is present
     const auto &image = model.images[texture.source]; // get the image
 
-    GLuint texObject;
-    // Generate the texture object
-    glGenTextures(1, &texObject);
-
-    glBindTexture(GL_TEXTURE_2D, texObject); // Bind to target GL_TEXTURE_2D
+    glBindTexture(GL_TEXTURE_2D, textureObjects[i]); // Bind to target GL_TEXTURE_2D
 
     // fill the texture object with the data from the image
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0,
             GL_RGBA, image.pixel_type, image.image.data());
 
     const auto &sampler = texture.sampler >= 0 ? model.samplers[texture.sampler] : defaultSampler;
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
-      sampler.minFilter != -1 ? sampler.minFilter : GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,
-      sampler.magFilter != -1 ? sampler.magFilter : GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, sampler.minFilter != -1 ? sampler.minFilter : GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, sampler.magFilter != -1 ? sampler.magFilter : GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, sampler.wrapS);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, sampler.wrapT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_R, sampler.wrapR);
@@ -741,7 +739,6 @@ std::vector<GLuint> ViewerApplication::createTextureObjects(const tinygltf::Mode
       glGenerateMipmap(GL_TEXTURE_2D);
     }
 
-    textureObjects.push_back(texObject);
   }
 
   glBindTexture(GL_TEXTURE_2D, 0);

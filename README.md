@@ -24,7 +24,8 @@ __TODO / IDEAS__ :
 - [x] Occlusion Mapping
 - [x] Deferred Rendering
 - [x] Post Processing - SSAO
-- [ ] Post Processing - Bloom
+- [x] Post Processing - Bloom
+- [x] Fix loading multiple VAOs
 - [ ] Normal mapping
 - [ ] Shadow Mapping
 - [ ] Point Light
