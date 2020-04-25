@@ -500,71 +500,71 @@ int ViewerApplication::run()
           cameraController = std::make_unique<FirstPersonCameraController>(m_GLFWHandle.window(), 5.f * maxDistance);
           cameraController->setCamera(camera);
         }
-
-        if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-          static float theta = 0.0f;
-          static float phi = 0.0f;
-          static bool lightFromCamera = true;
-          ImGui::Checkbox("Light from camera", &lightFromCamera);
-          if (lightFromCamera) {
-            lightDirection = -camera.front();
-          } else {
-            if (ImGui::SliderFloat("Theta", &theta, 0.f, glm::pi<float>()) ||
-                ImGui::SliderFloat("Phi", &phi, 0, 2.f * glm::pi<float>())) {
-              lightDirection = glm::vec3(
-                glm::sin(theta) * glm::cos(phi),
-                glm::cos(theta),
-                glm::sin(theta) * glm::sin(phi)
-              );
-            }
-          }
-
-          static glm::vec3 lightColor(1.f, 1.f, 1.f);
-          static float lightIntensityFactor = 3.f;
-          if (ImGui::ColorEdit3("Light Color", (float *)&lightColor) ||
-              ImGui::SliderFloat("Ligth Intensity", &lightIntensityFactor, 0.f, 10.f)) {
-            lightIntensity = lightColor * lightIntensityFactor;
-          }
-        }
-
-        if (ImGui::CollapsingHeader("Toggle Textures")) {
-          ImGui::Checkbox("Base Color", &useBaseColor);
-          ImGui::Checkbox("Metallic / Roughness", &useMetallicRoughnessTexture);
-          ImGui::Checkbox("Emissive Texture", &useEmissive);
-          ImGui::Checkbox("Occlusion Map", &useOcclusionMap);
-        }
-
-        if (ImGui::CollapsingHeader("Deferred Shading - GBuffers")) {
-          for (int32_t i = GPosition; i <= GBufferTextureCount; ++i) {
-            if (ImGui::RadioButton(m_GBufferTexNames[i], m_CurrentlyDisplayed == i))
-              m_CurrentlyDisplayed = GBufferTextureType(i);
-          }
-        }
-
-        if (ImGui::CollapsingHeader("SSAO")) {
-          ImGui::Checkbox("Enable SSAO", &m_useSSAO);
-          if (m_useSSAO) {
-            ImGui::SliderInt("Kernel Size", &m_ssaoKernelSize, 1, 64);
-            ImGui::SliderFloat("Radius", &m_ssaoRadius, 0.f, 5.f);
-            ImGui::SliderFloat("Bias", &m_ssaoBias, 0.f, 1.f);
-            ImGui::SliderFloat("Intensity", &m_ssaoIntensity, 0.f, 10.f);
-          }
-        }
-
-        if (ImGui::CollapsingHeader("Bloom")) {
-          ImGui::Checkbox("Enable Bloom", &m_useBloom);
-          if (m_useBloom) {
-            ImGui::Checkbox("Show Bloom only", &m_showBloomOnly);
-            ImGui::SliderInt("Quality", &m_bloomQuality, 0, 10);
-            ImGui::SliderInt("Radius (MaxLOD)", &m_maxLod, 0, 7);
-            ImGui::SliderFloat("Bloom Threshold", &m_bloomThreshold, 0.f, 3.f);
-            ImGui::ColorEdit3("Bloom Tint", (float *)&m_bloomTint);
-            ImGui::SliderFloat("Bloom Intensity", &m_bloomIntensity, 0.f, 10.f);
-            ImGui::SliderFloat("Exposure", &m_exposure, 0.f, 2.f);
-          }
-        }
-
       }
+
+      if (ImGui::CollapsingHeader("Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+        static float theta = 0.0f;
+        static float phi = 0.0f;
+        static bool lightFromCamera = true;
+        ImGui::Checkbox("Light from camera", &lightFromCamera);
+        if (lightFromCamera) {
+          lightDirection = -camera.front();
+        } else {
+          if (ImGui::SliderFloat("Theta", &theta, 0.f, glm::pi<float>()) ||
+              ImGui::SliderFloat("Phi", &phi, 0, 2.f * glm::pi<float>())) {
+            lightDirection = glm::vec3(
+              glm::sin(theta) * glm::cos(phi),
+              glm::cos(theta),
+              glm::sin(theta) * glm::sin(phi)
+            );
+          }
+        }
+
+        static glm::vec3 lightColor(1.f, 1.f, 1.f);
+        static float lightIntensityFactor = 3.f;
+        if (ImGui::ColorEdit3("Light Color", (float *)&lightColor) ||
+            ImGui::SliderFloat("Ligth Intensity", &lightIntensityFactor, 0.f, 10.f)) {
+          lightIntensity = lightColor * lightIntensityFactor;
+        }
+        ImGui::SliderFloat("Exposure", &m_exposure, 0.f, 2.f);
+      }
+
+      if (ImGui::CollapsingHeader("Toggle Textures")) {
+        ImGui::Checkbox("Base Color", &useBaseColor);
+        ImGui::Checkbox("Metallic / Roughness", &useMetallicRoughnessTexture);
+        ImGui::Checkbox("Emissive Texture", &useEmissive);
+        ImGui::Checkbox("Occlusion Map", &useOcclusionMap);
+      }
+
+      if (ImGui::CollapsingHeader("Deferred Shading - GBuffers")) {
+        for (int32_t i = GPosition; i <= GBufferTextureCount; ++i) {
+          if (ImGui::RadioButton(m_GBufferTexNames[i], m_CurrentlyDisplayed == i))
+            m_CurrentlyDisplayed = GBufferTextureType(i);
+        }
+      }
+
+      if (ImGui::CollapsingHeader("SSAO")) {
+        ImGui::Checkbox("Enable SSAO", &m_useSSAO);
+        if (m_useSSAO) {
+          ImGui::SliderInt("Kernel Size", &m_ssaoKernelSize, 1, 64);
+          ImGui::SliderFloat("Radius", &m_ssaoRadius, 0.f, 5.f);
+          ImGui::SliderFloat("Bias", &m_ssaoBias, 0.f, 1.f);
+          ImGui::SliderFloat("Intensity", &m_ssaoIntensity, 0.f, 10.f);
+        }
+      }
+
+      if (ImGui::CollapsingHeader("Bloom")) {
+        ImGui::Checkbox("Enable Bloom", &m_useBloom);
+        if (m_useBloom) {
+          ImGui::Checkbox("Show Bloom only", &m_showBloomOnly);
+          ImGui::SliderInt("Quality", &m_bloomQuality, 0, 10);
+          ImGui::SliderInt("Radius (MaxLOD)", &m_maxLod, 0, 7);
+          ImGui::SliderFloat("Bloom Threshold", &m_bloomThreshold, 0.f, 3.f);
+          ImGui::ColorEdit3("Bloom Tint", (float *)&m_bloomTint);
+          ImGui::SliderFloat("Bloom Intensity", &m_bloomIntensity, 0.f, 10.f);
+        }
+      }
+
       ImGui::End();
     }
 
