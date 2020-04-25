@@ -3,17 +3,20 @@
 
 [glTF Viewer tutorial link](https://celeborn2bealive.github.io/openglnoel/docs/gltf-viewer-01-intro-01-intro)
 
-__How to run the program (in build folder) :__
+__How to run the program :__
 
 ```shell
-cmake ../gltf-viewer-tutorial-git && make -j && ./bin/gltf-viewer viewer ../glTF-Sample-Models/DamagedHelmet/glTF/DamagedHelmet.gltf
-```
-or
-```shell
-cmake .. && make -j && ./bin/gltf-viewer viewer ../../models/DamagedHelmet/glTF/DamagedHelmet.gltf
+git clone https://github.com/torresf/gltf-viewer-tutorial.git
+cd gltf-viewer-tutorial
+mkdir build
+cd build
+cmake ..
+make -j
+./bin/gltf-viewer viewer ../../PATH_TO_GLTF_MODEL/MODEL.gltf
 ```
 
 __TODO / IDEAS__ :
+
 - [x] Loading and drawing
 - [x] Controlling the Camera
 - [x] Directional Lighting
